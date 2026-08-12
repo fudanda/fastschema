@@ -1,0 +1,1 @@
+import{i as t,j as r}from"./index-Dsg-C4-2.js";import{a as i}from"./roles-pages-DOAjgOp2.js";import"./data-table-Cp59TQP8.js";import"./page-Bl38Ltg1.js";import"./chevron-right-FVApb38u.js";import"./format-D9rsPZZV.js";import"./shield-check-C2klJOWN.js";function R(){const{id:o}=t.useSearch();return r.jsx(i,{id:o})}export{R as component};

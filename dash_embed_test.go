@@ -18,8 +18,9 @@ import (
 func TestDashEmbedServesAssets(t *testing.T) {
 	app := fiber.New()
 	app.Use("/dash", filesystem.New(filesystem.Config{
-		Root:       http.FS(embedDashStatic),
-		PathPrefix: "dash",
+		Root:         http.FS(embedDashStatic),
+		PathPrefix:   "dash",
+		NotFoundFile: "/dash/index.html",
 		Next: func(c *fiber.Ctx) bool {
 			return c.Path() == "/" || c.Path() == ""
 		},
@@ -36,6 +37,19 @@ func TestDashEmbedServesAssets(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "/dash/assets/") {
 		t.Fatal("/dash/ index.html does not reference the /dash/assets/ base")
+	}
+
+	// Browser-history routes must fall back to the SPA shell on direct loads.
+	deepResp, err := app.Test(httptest.NewRequest(http.MethodGet, "/dash/users/create", nil))
+	if err != nil {
+		t.Fatalf("request deep dashboard route failed: %v", err)
+	}
+	if deepResp.StatusCode != http.StatusOK {
+		t.Fatalf("deep dashboard route status = %d, want 200", deepResp.StatusCode)
+	}
+	deepBody, _ := io.ReadAll(deepResp.Body)
+	if !strings.Contains(string(deepBody), "/dash/assets/") {
+		t.Fatal("deep dashboard route did not serve the SPA shell")
 	}
 
 	// A hashed JS asset (name varies per build) must serve 200.

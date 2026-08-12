@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"slices"
 
 	_ "github.com/DATA-DOG/go-sqlmock"
 	"github.com/fastschema/fastschema/entity"
@@ -109,14 +110,16 @@ type Hooks struct {
 
 func (h *Hooks) Clone() *Hooks {
 	return &Hooks{
-		PostDBQuery:  append([]PostDBQuery{}, h.PostDBQuery...),
-		PostDBCreate: append([]PostDBCreate{}, h.PostDBCreate...),
-		PostDBUpdate: append([]PostDBUpdate{}, h.PostDBUpdate...),
-		PostDBDelete: append([]PostDBDelete{}, h.PostDBDelete...),
-		PreDBQuery:   append([]PreDBQuery{}, h.PreDBQuery...),
-		PreDBCreate:  append([]PreDBCreate{}, h.PreDBCreate...),
-		PreDBUpdate:  append([]PreDBUpdate{}, h.PreDBUpdate...),
-		PreDBDelete:  append([]PreDBDelete{}, h.PreDBDelete...),
+		PostDBQuery:  slices.Clone(h.PostDBQuery),
+		PostDBExec:   slices.Clone(h.PostDBExec),
+		PostDBCreate: slices.Clone(h.PostDBCreate),
+		PostDBUpdate: slices.Clone(h.PostDBUpdate),
+		PostDBDelete: slices.Clone(h.PostDBDelete),
+		PreDBQuery:   slices.Clone(h.PreDBQuery),
+		PreDBExec:    slices.Clone(h.PreDBExec),
+		PreDBCreate:  slices.Clone(h.PreDBCreate),
+		PreDBUpdate:  slices.Clone(h.PreDBUpdate),
+		PreDBDelete:  slices.Clone(h.PreDBDelete),
 	}
 }
 
@@ -163,6 +166,7 @@ func (c *Config) Clone() *Config {
 		MigrationDir:       c.MigrationDir,
 		MigrationMode:      c.MigrationMode,
 		DisableForeignKeys: c.DisableForeignKeys,
+		UseSoftDeletes:     c.UseSoftDeletes,
 		Hooks:              c.Hooks,
 	}
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/fastschema/fastschema/fs"
 	"github.com/fastschema/fastschema/logger"
+	fserrors "github.com/fastschema/fastschema/pkg/errors"
 	"github.com/fastschema/fastschema/pkg/utils"
 	"github.com/google/uuid"
 )
@@ -108,8 +109,9 @@ func MiddlewareRecover(c *Context) error {
 			length := runtime.Stack(stack, true)
 			msg := fmt.Sprintf("%v %s\n", err, stack[:length])
 			c.Logger().Error(msg, logger.LogContext{"recovered": true})
-			if err := c.Status(http.StatusBadRequest).JSON(fs.Map{"error": err.Error()}); err != nil {
-				c.Logger().Error(err)
+			result := fs.NewResult(nil, fserrors.InternalServerError())
+			if responseErr := c.Status(http.StatusInternalServerError).JSON(result); responseErr != nil {
+				c.Logger().Error(responseErr)
 			}
 		}
 	}()

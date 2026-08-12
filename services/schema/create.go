@@ -13,10 +13,10 @@ import (
 )
 
 func (ss *SchemaService) Create(c fs.Context, newSchemaData *schema.Schema) (*schema.Schema, error) {
-	schemaFile := fmt.Sprintf("%s/%s.json", ss.app.SchemaBuilder().Dir(), newSchemaData.Name)
 	updateSchemas := map[string]*schema.Schema{}
+	currentSchemaFile := fmt.Sprintf("%s/%s.json", ss.app.SchemaBuilder().Dir(), newSchemaData.Name)
 
-	if utils.IsFileExists(schemaFile) {
+	if utils.IsFileExists(currentSchemaFile) {
 		return nil, errors.BadRequest("schema already exists")
 	}
 
@@ -37,7 +37,7 @@ func (ss *SchemaService) Create(c fs.Context, newSchemaData *schema.Schema) (*sc
 			continue
 		}
 
-		targetSchema, err := ss.app.SchemaBuilder().Schema(relation.TargetSchemaName)
+		currentTargetSchema, err := ss.app.SchemaBuilder().Schema(relation.TargetSchemaName)
 		// targetSchema, ok := su.updateSchemas[relation.TargetSchemaName]
 		if err != nil {
 			return nil, errors.BadRequest(
@@ -64,6 +64,10 @@ func (ss *SchemaService) Create(c fs.Context, newSchemaData *schema.Schema) (*sc
 				Optional:         isTargetRelationOwner,
 			},
 		}
+		targetSchema, exists := updateSchemas[currentTargetSchema.Name]
+		if !exists {
+			targetSchema = currentTargetSchema.Clone()
+		}
 		if targetSchema.HasField(targetRelationField.Name) {
 			return nil, errors.BadRequest(
 				"Invalid field '%s.%s'. Target schema '%s' already has field '%s'",
@@ -87,18 +91,33 @@ func (ss *SchemaService) Create(c fs.Context, newSchemaData *schema.Schema) (*sc
 		return nil, errors.UnprocessableEntity(err.Error())
 	}
 
+	tx, err := newSchemaDirTransaction(ss.app.SchemaBuilder().Dir())
+	if err != nil {
+		return nil, errors.InternalServerError("could not create schema transaction: %s", err.Error())
+	}
+	defer func() {
+		if discardErr := tx.discard(); discardErr != nil {
+			c.Logger().Warn("Could not discard schema transaction", discardErr)
+		}
+	}()
+
+	schemaFile := fmt.Sprintf("%s/%s.json", tx.stagedDir, newSchemaData.Name)
 	if err := newSchemaData.SaveToFile(schemaFile); err != nil {
 		return nil, errors.InternalServerError("could not save schema")
 	}
 
 	// update the related schemas
-	for _, schema := range updateSchemas {
-		if err := schema.SaveToFile(fmt.Sprintf("%s/%s.json", ss.app.SchemaBuilder().Dir(), schema.Name)); err != nil {
+	for _, updatedSchema := range updateSchemas {
+		if err := updatedSchema.SaveToFile(fmt.Sprintf("%s/%s.json", tx.stagedDir, updatedSchema.Name)); err != nil {
 			return nil, errors.InternalServerError("could not save schema")
 		}
 	}
 
-	if err := ss.app.Reload(c, nil); err != nil {
+	if _, err := schema.NewBuilderFromDir(tx.stagedDir, ss.app.SystemSchemas()...); err != nil {
+		return nil, errors.UnprocessableEntity("schema validation failed").WithData(err)
+	}
+
+	if err := ss.applySchemaTransaction(c, tx, nil); err != nil {
 		c.Logger().Errorf("could not reload app: %s", err.Error())
 		return nil, errors.InternalServerError("could not reload app: %s", err.Error())
 	}

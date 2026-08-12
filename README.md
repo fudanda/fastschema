@@ -101,6 +101,18 @@ development process and allowing you to focus on creating rich, dynamic content.
   <img src="https://fastschema.com/static/images/fastschema.png" alt="FastSchema Overview" />
 </p>
 
+## Dashboard development
+
+The TanStack Start dashboard source lives in [`frontend/`](./frontend). It runs in SPA mode under `/dash` and talks to FastSchema through `/api`.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+With a FastSchema server running on port `8000`, open <http://localhost:3000/dash/>. Run `npm run build:embed` to rebuild and atomically synchronize the embedded files in `dash/`.
+
 ## Use Cases
 
 - **A BaaS platform with Headless CMS capabilities (No-Code Solution).**

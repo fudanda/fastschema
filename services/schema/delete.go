@@ -2,6 +2,7 @@ package schemaservice
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/fastschema/fastschema/db"
 	"github.com/fastschema/fastschema/fs"
@@ -16,6 +17,16 @@ func (ss *SchemaService) Delete(c fs.Context, _ any) (fs.Map, error) {
 	if err != nil {
 		return nil, errors.NotFound(err.Error())
 	}
+
+	tx, err := newSchemaDirTransaction(ss.app.SchemaBuilder().Dir())
+	if err != nil {
+		return nil, errors.InternalServerError("could not create schema transaction: %s", err.Error())
+	}
+	defer func() {
+		if discardErr := tx.discard(); discardErr != nil {
+			c.Logger().Warn("Could not discard schema transaction", discardErr)
+		}
+	}()
 
 	hasRelation := false
 	// remove relation fields if the field type is relation
@@ -43,8 +54,10 @@ func (ss *SchemaService) Delete(c fs.Context, _ any) (fs.Map, error) {
 		su := &SchemaUpdate{
 			updateData:           updateData,
 			currentSchemaBuilder: ss.app.SchemaBuilder(),
+			newSchemaBuilderDir:  tx.stagedDir,
 			updateSchemas:        map[string]*schema.Schema{},
 			currentSchema:        currentSchema,
+			systemSchemas:        ss.app.SystemSchemas(),
 		}
 
 		if err := su.update(); err != nil {
@@ -53,12 +66,16 @@ func (ss *SchemaService) Delete(c fs.Context, _ any) (fs.Map, error) {
 	}
 
 	// delete the schema file
-	schemaFile := ss.app.SchemaBuilder().SchemaFile(schemaName)
+	schemaFile := filepath.Join(tx.stagedDir, schemaName+".json")
 	if err := os.Remove(schemaFile); err != nil {
 		return nil, errors.InternalServerError(err.Error())
 	}
 
-	if err := ss.app.Reload(c, nil); err != nil {
+	if _, err := schema.NewBuilderFromDir(tx.stagedDir, ss.app.SystemSchemas()...); err != nil {
+		return nil, errors.UnprocessableEntity("schema validation failed").WithData(err)
+	}
+
+	if err := ss.applySchemaTransaction(c, tx, nil); err != nil {
 		return nil, errors.InternalServerError(err.Error())
 	}
 

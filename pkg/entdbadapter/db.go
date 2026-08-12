@@ -121,17 +121,20 @@ func (d *Adapter) Reload(
 	enableMigrations = append(enableMigrations, true)
 	renamedEntTables := make([]*entSchema.Table, 0)
 	newConfig := d.config.Clone()
-
-	if !enableMigrations[0] {
-		newConfig.MigrationMode = "manual"
-	} else {
-		newConfig.MigrationMode = "auto"
-	}
+	// Reload must create the adapter without applying an implicit migration.
+	// The schema diff, including rename metadata, is applied exactly once below.
+	newConfig.MigrationMode = "manual"
 
 	newAdapter, err := NewClient(newConfig, newSchemaBuilder)
 	if err != nil {
 		return nil, err
 	}
+	keepNewAdapter := false
+	defer func() {
+		if !keepNewAdapter {
+			_ = newAdapter.Close()
+		}
+	}()
 
 	// When a table is renamed, the table with old name will not exist in the schema builder.
 	// Ent won't know about the old table, so any operations on it will fail.
@@ -191,19 +194,18 @@ func (d *Adapter) Reload(
 		}
 	}
 
-	if err := d.Close(); err != nil {
-		return nil, err
-	}
-
 	newEntAdapter, ok := newAdapter.(EntAdapter)
 	if !ok {
 		return nil, fmt.Errorf("invalid adapter, want EntAdapter, got %T", newAdapter)
 	}
 
-	if err = newEntAdapter.Migrate(ctx, changes, disableForeignKeys, renamedEntTables...); err != nil {
-		return nil, err
+	if enableMigrations[0] {
+		if err = newEntAdapter.Migrate(ctx, changes, disableForeignKeys, renamedEntTables...); err != nil {
+			return nil, err
+		}
 	}
 
+	keepNewAdapter = true
 	return newAdapter, nil
 }
 

@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"testing"
 	"time"
@@ -42,15 +43,18 @@ func prepareTest() (db.Client, context.Context) {
 
 func TestDBConfigClone(t *testing.T) {
 	c := &db.Config{
-		Driver:       "mysql",
-		Name:         "mydb",
-		Host:         "localhost",
-		Port:         "3306",
-		User:         "root",
-		Pass:         "password",
-		Logger:       nil,
-		LogQueries:   true,
-		MigrationDir: "/path/to/migrations",
+		Driver:             "mysql",
+		Name:               "mydb",
+		Host:               "localhost",
+		Port:               "3306",
+		User:               "root",
+		Pass:               "password",
+		Logger:             nil,
+		LogQueries:         true,
+		MigrationDir:       "/path/to/migrations",
+		MigrationMode:      "manual",
+		DisableForeignKeys: true,
+		UseSoftDeletes:     true,
 	}
 
 	clone := c.Clone()
@@ -63,12 +67,18 @@ func TestDBConfigClone(t *testing.T) {
 	assert.Equal(t, c.Logger, clone.Logger)
 	assert.Equal(t, c.LogQueries, clone.LogQueries)
 	assert.Equal(t, c.MigrationDir, clone.MigrationDir)
+	assert.Equal(t, c.MigrationMode, clone.MigrationMode)
+	assert.Equal(t, c.DisableForeignKeys, clone.DisableForeignKeys)
+	assert.Equal(t, c.UseSoftDeletes, clone.UseSoftDeletes)
 }
 
 func TestHooksClone(t *testing.T) {
 	hooks := &db.Hooks{
 		PostDBQuery: []db.PostDBQuery{func(ctx context.Context, option *db.QueryOption, entities []*entity.Entity) ([]*entity.Entity, error) {
 			return nil, nil
+		}},
+		PostDBExec: []db.PostDBExec{func(ctx context.Context, option *db.QueryOption, result sql.Result) error {
+			return nil
 		}},
 		PostDBCreate: []db.PostDBCreate{func(ctx context.Context, schema *schema.Schema, dataCreate *entity.Entity, id any) error {
 			return nil
@@ -80,6 +90,7 @@ func TestHooksClone(t *testing.T) {
 			return nil
 		}},
 		PreDBQuery:  []db.PreDBQuery{func(ctx context.Context, option *db.QueryOption) error { return nil }},
+		PreDBExec:   []db.PreDBExec{func(ctx context.Context, option *db.QueryOption) error { return nil }},
 		PreDBCreate: []db.PreDBCreate{func(ctx context.Context, schema *schema.Schema, createData *entity.Entity) error { return nil }},
 		PreDBUpdate: []db.PreDBUpdate{func(ctx context.Context, schema *schema.Schema, predicates *[]*db.Predicate, updateData *entity.Entity) error {
 			return nil
@@ -90,10 +101,12 @@ func TestHooksClone(t *testing.T) {
 	clonedHooks := hooks.Clone()
 
 	assert.Equal(t, len(hooks.PostDBQuery), len(clonedHooks.PostDBQuery))
+	assert.Equal(t, len(hooks.PostDBExec), len(clonedHooks.PostDBExec))
 	assert.Equal(t, len(hooks.PostDBCreate), len(clonedHooks.PostDBCreate))
 	assert.Equal(t, len(hooks.PostDBUpdate), len(clonedHooks.PostDBUpdate))
 	assert.Equal(t, len(hooks.PostDBDelete), len(clonedHooks.PostDBDelete))
 	assert.Equal(t, len(hooks.PreDBQuery), len(clonedHooks.PreDBQuery))
+	assert.Equal(t, len(hooks.PreDBExec), len(clonedHooks.PreDBExec))
 	assert.Equal(t, len(hooks.PreDBCreate), len(clonedHooks.PreDBCreate))
 	assert.Equal(t, len(hooks.PreDBUpdate), len(clonedHooks.PreDBUpdate))
 	assert.Equal(t, len(hooks.PreDBDelete), len(clonedHooks.PreDBDelete))

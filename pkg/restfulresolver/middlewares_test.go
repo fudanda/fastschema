@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMiddlewares(t *testing.T) {
+func TestMiddlewareRecover(t *testing.T) {
 	mockLogger := logger.CreateMockLogger(true)
 	server := restfulresolver.New(restfulresolver.Config{
 		Logger: mockLogger,
@@ -53,6 +53,6 @@ func TestMiddlewares(t *testing.T) {
 	resp, err = server.Test(req3)
 	assert.NoError(t, err)
 	defer closeResponse(t, resp)
-	assert.Equal(t, 400, resp.StatusCode)
-	assert.Equal(t, `{"error":"test panic"}`, utils.Must(utils.ReadCloserToString(resp.Body)))
+	assert.Equal(t, 500, resp.StatusCode)
+	assert.Equal(t, `{"error":{"code":"500","message":"Internal Server Error"}}`, utils.Must(utils.ReadCloserToString(resp.Body)))
 }

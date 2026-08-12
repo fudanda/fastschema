@@ -53,19 +53,28 @@ func (ss *SchemaService) Import(c fs.Context, _ any) (fs.Map, error) {
 		}
 	}
 
-	_, err = schema.NewBuilderFromDir(tmpDir)
+	tx, err := newSchemaDirTransaction(ss.app.SchemaBuilder().Dir())
 	if err != nil {
-		return nil, err
+		return nil, errors.InternalServerError("could not create schema transaction: %s", err.Error())
 	}
+	defer func() {
+		if discardErr := tx.discard(); discardErr != nil {
+			c.Logger().Warn("Could not discard schema transaction", discardErr)
+		}
+	}()
 
 	for _, sc := range schemas {
-		schemaFile := fmt.Sprintf("%s/%s.json", ss.app.SchemaBuilder().Dir(), sc.Name)
+		schemaFile := fmt.Sprintf("%s/%s.json", tx.stagedDir, sc.Name)
 		if err := sc.SaveToFile(schemaFile); err != nil {
 			return nil, errors.InternalServerError("could not save schema")
 		}
 	}
 
-	if err := ss.app.Reload(c, nil); err != nil {
+	if _, err := schema.NewBuilderFromDir(tx.stagedDir, ss.app.SystemSchemas()...); err != nil {
+		return nil, errors.UnprocessableEntity("schema validation failed").WithData(err)
+	}
+
+	if err := ss.applySchemaTransaction(c, tx, nil); err != nil {
 		c.Logger().Errorf("could not reload app: %s", err.Error())
 		return nil, errors.InternalServerError("could not reload app: %s", err.Error())
 	}

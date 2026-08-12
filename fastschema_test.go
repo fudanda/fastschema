@@ -57,10 +57,16 @@ func TestFastSchemaCustomDirAbsolute(t *testing.T) {
 	config := &fs.Config{
 		HideResourcesInfo: true,
 		Dir:               t.TempDir(),
+		Logger:            logger.CreateMockLogger(true),
 	}
 	app, err := fastschema.New(config)
 	assert.NoError(t, err)
-	assert.NotNil(t, app)
+	if !assert.NotNil(t, app) {
+		return
+	}
+	t.Cleanup(func() {
+		assert.NoError(t, app.Shutdown())
+	})
 	assert.Equal(t, config.Dir, app.Dir())
 	envFile := path.Join(config.Dir, "data", ".env")
 	assert.FileExists(t, envFile)
@@ -94,10 +100,11 @@ func TestFastSchemaCustomDirDefault(t *testing.T) {
 }
 
 func TestFastSchemaPrepareConfig(t *testing.T) {
-	readonlyDir := "/dev/null"
+	notDirectory := path.Join(t.TempDir(), "not-a-directory")
+	assert.NoError(t, os.WriteFile(notDirectory, []byte("test"), 0600))
 	config := &fs.Config{
 		HideResourcesInfo: true,
-		Dir:               readonlyDir,
+		Dir:               notDirectory,
 	}
 	_, err := fastschema.New(config)
 	assert.Error(t, err)
@@ -106,6 +113,7 @@ func TestFastSchemaPrepareConfig(t *testing.T) {
 	config = &fs.Config{
 		HideResourcesInfo: true,
 		Dir:               t.TempDir(),
+		Logger:            logger.CreateMockLogger(true),
 	}
 	envContent := `APP_KEY=testKey
 		APP_PORT=8001
@@ -120,7 +128,12 @@ func TestFastSchemaPrepareConfig(t *testing.T) {
 
 	app, err := fastschema.New(config)
 	assert.NoError(t, err)
-	assert.NotNil(t, app)
+	if !assert.NotNil(t, app) {
+		return
+	}
+	t.Cleanup(func() {
+		assert.NoError(t, app.Shutdown())
+	})
 	assert.Equal(t, config.Dir, app.Dir())
 	assert.Equal(t, "testKey", app.Config().AppKey)
 	assert.Equal(t, "8001", app.Config().Port)

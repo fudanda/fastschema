@@ -32,6 +32,7 @@ func createFileBody(t *testing.T, schemaName string, schemaContent string) (*mul
 	mw := multipart.NewWriter(body)
 	file, err := os.Open(filePath)
 	assert.NoError(t, err)
+	defer func() { assert.NoError(t, file.Close()) }()
 
 	w, err := mw.CreateFormFile("field", filePath)
 	assert.NoError(t, err)
@@ -61,9 +62,9 @@ func TestSchemaServiceImport(t *testing.T) {
 	resp = utils.Must(server.Test(req))
 	defer func() { assert.NoError(t, resp.Body.Close()) }()
 
-	assert.Equal(t, 500, resp.StatusCode)
+	assert.Equal(t, 422, resp.StatusCode)
 	response = utils.Must(utils.ReadCloserToString(resp.Body))
-	assert.Contains(t, response, `schema 'blog'`)
+	assert.Contains(t, response, `"schema":"blog"`)
 	assert.Contains(t, response, `label_field is required`)
 	assert.Contains(t, response, `namespace is required`)
 
@@ -91,7 +92,7 @@ func TestSchemaServiceImport(t *testing.T) {
 	req.Header.Add("Content-Type", mw.FormDataContentType())
 	resp = utils.Must(server.Test(req))
 	defer func() { assert.NoError(t, resp.Body.Close()) }()
-	assert.Equal(t, 500, resp.StatusCode)
+	assert.Equal(t, 422, resp.StatusCode)
 	response = utils.Must(utils.ReadCloserToString(resp.Body))
 	assert.Contains(t, response, `target schema 'cat' is not defined`)
 
@@ -139,7 +140,9 @@ func TestSchemaServiceImport(t *testing.T) {
 	req.Header.Add("Content-Type", mw.FormDataContentType())
 	resp = utils.Must(server.Test(req))
 	defer func() { assert.NoError(t, resp.Body.Close()) }()
-	assert.Equal(t, 500, resp.StatusCode)
+	assert.NoError(t, categoryFile.Close())
+	assert.NoError(t, blogFile.Close())
+	assert.Equal(t, 422, resp.StatusCode)
 	response = utils.Must(utils.ReadCloserToString(resp.Body))
 	assert.NotEmpty(t, response)
 	assert.Contains(t, response, `back-reference field 'blogs' not found in target schema 'category_import'`)
@@ -198,6 +201,8 @@ func TestSchemaServiceImport(t *testing.T) {
 	assert.NoError(t, err)
 	_, err = io.Copy(w, blogFile)
 	assert.NoError(t, err)
+	assert.NoError(t, categoryFile.Close())
+	assert.NoError(t, blogFile.Close())
 	mw.Close()
 
 	req = httptest.NewRequest("POST", "/schema/import", body)

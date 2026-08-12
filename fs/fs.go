@@ -84,14 +84,19 @@ func (dc *DiskConfig) Clone() *DiskConfig {
 		Driver:          dc.Driver,
 		Root:            dc.Root,
 		BaseURL:         dc.BaseURL,
+		PublicPath:      dc.PublicPath,
 		GetBaseURL:      dc.GetBaseURL,
 		Provider:        dc.Provider,
 		Endpoint:        dc.Endpoint,
 		Region:          dc.Region,
 		Bucket:          dc.Bucket,
+		CopyCutoff:      dc.CopyCutoff,
+		ChunkSize:       dc.ChunkSize,
+		ForcePathStyle:  dc.ForcePathStyle,
 		AccessKeyID:     dc.AccessKeyID,
 		SecretAccessKey: dc.SecretAccessKey,
 		ACL:             dc.ACL,
+		BucketACL:       dc.BucketACL,
 	}
 }
 

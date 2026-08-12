@@ -2,6 +2,7 @@ package restfulresolver
 
 import (
 	"net/http"
+	"path"
 
 	"github.com/fastschema/fastschema/fs"
 	"github.com/fastschema/fastschema/logger"
@@ -51,9 +52,18 @@ func (r *RestfulResolver) init(logger logger.Logger) *RestfulResolver {
 	// Static files
 	for _, staticResource := range r.config.StaticFSs {
 		if staticResource.RootFS != nil {
+			var notFoundFile string
+			if staticResource.Config != nil {
+				notFoundFile = staticResource.Config.NotFoundFile
+			}
+			if notFoundFile != "" && staticResource.FSPrefix != "" {
+				notFoundFile = path.Join("/", staticResource.FSPrefix, notFoundFile)
+			}
+
 			r.server.App.Use(staticResource.BasePath, filesystem.New(filesystem.Config{
-				Root:       staticResource.RootFS,
-				PathPrefix: staticResource.FSPrefix,
+				Root:         staticResource.RootFS,
+				PathPrefix:   staticResource.FSPrefix,
+				NotFoundFile: notFoundFile,
 				Next: func(c *fiber.Ctx) bool {
 					// skip serving static files for root path
 					return c.Path() == "/" || c.Path() == ""

@@ -4,15 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strings"
-	"time"
 
 	"github.com/fastschema/fastschema/db"
 	"github.com/fastschema/fastschema/fs"
 	"github.com/fastschema/fastschema/pkg/errors"
 	"github.com/fastschema/fastschema/pkg/utils"
 	"github.com/fastschema/fastschema/schema"
-	"github.com/otiai10/copy"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -37,10 +34,20 @@ func (ss *SchemaService) Update(
 	c fs.Context,
 	updateData *SchemaUpdateData,
 ) (_ *schema.Schema, err error) {
-	currentSchemaBuilderDir := ss.app.SchemaBuilder().Dir()
+	tx, err := newSchemaDirTransaction(ss.app.SchemaBuilder().Dir())
+	if err != nil {
+		return nil, errors.InternalServerError(err.Error())
+	}
+	defer func() {
+		if discardErr := tx.discard(); discardErr != nil {
+			c.Logger().Warn("Could not discard schema transaction", discardErr)
+		}
+	}()
+
 	su := &SchemaUpdate{
 		updateData:           updateData,
 		currentSchemaBuilder: ss.app.SchemaBuilder(),
+		newSchemaBuilderDir:  tx.stagedDir,
 		updateSchemas:        map[string]*schema.Schema{},
 		systemSchemas:        ss.app.SystemSchemas(),
 	}
@@ -57,26 +64,10 @@ func (ss *SchemaService) Update(
 		return nil, err
 	}
 
-	if err = ss.app.Reload(c, &db.Changes{
+	if err = ss.applySchemaTransaction(c, tx, &db.Changes{
 		RenameTables: su.updateData.RenameTables,
 		RenameFields: su.updateData.RenameFields,
 	}); err != nil {
-		// rollback
-		// remove the current schema dir that contains the new schema files
-		if e := os.RemoveAll(currentSchemaBuilderDir); e != nil {
-			return nil, errors.InternalServerError(e.Error())
-		}
-
-		// rename the backup dir to the current schema dir
-		// newSchemaBuilderDir is now holding the original schemas
-		if e := os.Rename(su.newSchemaBuilderDir, currentSchemaBuilderDir); e != nil {
-			return nil, errors.InternalServerError(e.Error())
-		}
-
-		if e := ss.app.Reload(c, nil); e != nil {
-			return nil, errors.InternalServerError(e.Error())
-		}
-
 		return nil, errors.InternalServerError(err.Error())
 	}
 
@@ -84,10 +75,6 @@ func (ss *SchemaService) Update(
 }
 
 func (su *SchemaUpdate) update() (err error) {
-	if err := su.createNewSchemaDir(); err != nil {
-		return errors.InternalServerError(err.Error())
-	}
-
 	// add the type and schema information to the rename fields
 	su.updateData.RenameFields = utils.Map(su.updateData.RenameFields, func(rf *db.RenameItem) *db.RenameItem {
 		rf.Type = "column"
@@ -135,7 +122,7 @@ func (su *SchemaUpdate) update() (err error) {
 		return rf.From != rf.To
 	})
 
-	return su.renameDir()
+	return nil
 }
 
 // if the target schema is not existed in updateSchemas, add it.
@@ -459,48 +446,4 @@ func (su *SchemaUpdate) applyRenameSchemaNamespace() {
 		From: su.currentSchema.Namespace,
 		To:   newSchemaNamespace,
 	})
-}
-
-// copy the current schemas dir to a new backup dir.
-// rename the new schema dir to the current schema dir to apply the new changes.
-// rename the backup dir to the new schema dir to keep the backup.
-// the new schema dir is now holding the backed up schemas (the original schemas).
-func (su *SchemaUpdate) renameDir() error {
-	currentSchemaDir := su.currentSchemaBuilder.Dir()
-	backupDir := su.newSchemaBuilderDir + "_backup"
-
-	if err := os.Rename(currentSchemaDir, backupDir); err != nil {
-		return err
-	}
-
-	if err := os.Rename(su.newSchemaBuilderDir, currentSchemaDir); err != nil {
-		return err
-	}
-
-	if err := os.Rename(backupDir, su.newSchemaBuilderDir); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (su *SchemaUpdate) createNewSchemaDir() error {
-	schemasDir := su.currentSchemaBuilder.Dir()
-	parentDir := path.Join(path.Dir(schemasDir), "backup")
-	now := time.Now()
-	schemaDirName := path.Base(schemasDir)
-	backupDirName := fmt.Sprintf("%s_%s", schemaDirName, now.Format("2006_01_02_150405_.000000"))
-	backupDirName = strings.ReplaceAll(backupDirName, ".", "")
-	su.newSchemaBuilderDir = path.Join(parentDir, backupDirName)
-
-	if err := os.MkdirAll(su.newSchemaBuilderDir, 0755); err != nil {
-		return err
-	}
-
-	// Copy all files from the current schema directory to the new directory
-	if err := copy.Copy(schemasDir, su.newSchemaBuilderDir); err != nil {
-		return err
-	}
-
-	return nil
 }

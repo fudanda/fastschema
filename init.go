@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"path"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/fastschema/fastschema/pkg/zaplogger"
 	"github.com/fastschema/fastschema/plugins"
 	"github.com/fastschema/fastschema/schema"
+	schemaservice "github.com/fastschema/fastschema/services/schema"
 	ts "github.com/fastschema/fastschema/services/tool"
 	"github.com/joho/godotenv"
 )
@@ -111,6 +113,9 @@ func (a *App) init() (err error) {
 		BasePath: "/" + a.config.DashBaseName,
 		RootFS:   http.FS(embedDashStatic),
 		FSPrefix: "dash",
+		Config: &fs.StaticConfig{
+			NotFoundFile: "index.html",
+		},
 	})
 
 	return nil
@@ -125,6 +130,10 @@ func (a *App) prepareConfig() (err error) {
 	a.migrationDir = path.Join(a.dataDir, "migrations")
 	a.pluginsDir = path.Join(a.dataDir, "plugins")
 	envFile := path.Join(a.dataDir, ".env")
+
+	if err = schemaservice.RecoverTransactions(a.schemasDir); err != nil {
+		return err
+	}
 
 	if err = utils.MkDirs(
 		a.logDir,
@@ -614,12 +623,18 @@ func (a *App) getAppDir() {
 		return
 	}
 
+	if filepath.IsAbs(a.config.Dir) {
+		a.dir = filepath.Clean(a.config.Dir)
+		return
+	}
+	// Keep POSIX-style absolute paths absolute even when the process is
+	// running on Windows (for example, paths supplied to Linux containers).
 	if strings.HasPrefix(a.config.Dir, "/") {
 		a.dir = a.config.Dir
 		return
 	}
 
-	a.dir = path.Join(a.wd, a.config.Dir)
+	a.dir = filepath.Join(a.wd, a.config.Dir)
 }
 
 func (a *App) GetSetupToken(ctx context.Context) (string, error) {

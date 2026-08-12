@@ -3,6 +3,7 @@ package schemaservice_test
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/fastschema/fastschema/db"
@@ -159,12 +160,19 @@ func (s testApp) Disk(names ...string) fs.Disk {
 }
 
 func (s *testApp) Reload(ctx context.Context, changes *db.Changes) error {
-	s.sb = utils.Must(schema.NewBuilderFromDir(s.schemaDir))
-	s.db = utils.Must(entdbadapter.NewTestClient(utils.Must(os.MkdirTemp("", "migrations")), s.sb))
-
 	if s.reloadFn != nil {
-		return s.reloadFn(changes)
+		if err := s.reloadFn(changes); err != nil {
+			return err
+		}
 	}
+
+	newSchemaBuilder := utils.Must(schema.NewBuilderFromDir(s.schemaDir))
+	newDB := utils.Must(entdbadapter.NewTestClient(utils.Must(os.MkdirTemp("", "migrations")), newSchemaBuilder))
+	if s.db != nil {
+		_ = s.db.Close()
+	}
+	s.sb = newSchemaBuilder
+	s.db = newDB
 
 	return nil
 }
@@ -216,6 +224,11 @@ func createSchemaService(t *testing.T, config *testSchemaSeviceConfig) (
 		BaseURL: "http://localhost:3000/files",
 	}}, t.TempDir()))
 	testApp := &testApp{sb: sb, db: db, schemaDir: schemaDir, disks: disks, reloadFn: reloadFn}
+	t.Cleanup(func() {
+		if testApp.db != nil {
+			assert.NoError(t, testApp.db.Close())
+		}
+	})
 	schemaService := schemaservice.New(testApp)
 
 	resources := fs.NewResourcesManager()
@@ -269,4 +282,17 @@ func TestCreateResource(t *testing.T) {
 	assert.NotNil(t, api.Find("api.schema.delete"))
 	assert.NotNil(t, api.Find("api.schema.import"))
 	assert.NotNil(t, api.Find("api.schema.export"))
+}
+
+func TestRecoverTransactionsRestoresBackup(t *testing.T) {
+	parentDir := t.TempDir()
+	currentDir := filepath.Join(parentDir, "schemas")
+	transactionDir := filepath.Join(parentDir, ".fastschema-schema-interrupted")
+	backupDir := filepath.Join(transactionDir, "backup")
+	assert.NoError(t, os.MkdirAll(backupDir, 0755))
+	assert.NoError(t, os.WriteFile(filepath.Join(backupDir, "post.json"), []byte(`{"name":"post"}`), 0600))
+
+	assert.NoError(t, schemaservice.RecoverTransactions(currentDir))
+	assert.FileExists(t, filepath.Join(currentDir, "post.json"))
+	assert.NoDirExists(t, transactionDir)
 }

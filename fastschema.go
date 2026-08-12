@@ -285,19 +285,28 @@ func (a *App) Reload(ctx context.Context, dbChanges *db.Changes) (err error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if err = a.createSchemaBuilder(); err != nil {
-		return err
-	}
-
-	newDB, err := a.DB().Reload(ctx, a.schemaBuilder, dbChanges, a.config.DBConfig.DisableForeignKeys)
+	newSchemaBuilder, err := schema.NewBuilderFromDir(
+		a.schemasDir,
+		a.SystemSchemas()...,
+	)
 	if err != nil {
 		return err
 	}
 
-	if a.DB() != nil && a.DB().Close() != nil {
+	oldDB := a.DB()
+	newDB, err := oldDB.Reload(ctx, newSchemaBuilder, dbChanges, a.config.DBConfig.DisableForeignKeys)
+	if err != nil {
 		return err
 	}
 
+	if oldDB != nil {
+		if closeErr := oldDB.Close(); closeErr != nil {
+			_ = newDB.Close()
+			return closeErr
+		}
+	}
+
+	a.schemaBuilder = newSchemaBuilder
 	a.config.DB = newDB
 
 	if _, err := a.CreateOpenAPISpec(true); err != nil {

@@ -2,8 +2,11 @@ package schemaservice_test
 
 import (
 	"bytes"
+	stderrors "errors"
 	"fmt"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -60,6 +63,45 @@ func TestSchemaServiceUpdateError(t *testing.T) {
 	assert.Equal(t, 400, resp.StatusCode)
 	response = utils.Must(utils.ReadCloserToString(resp.Body))
 	assert.Contains(t, response, `schema update data is required`)
+}
+
+func TestSchemaServiceUpdateRollsBackOnReloadFailure(t *testing.T) {
+	reloadCalls := 0
+	testApp, _, server := createSchemaService(t, &testSchemaSeviceConfig{
+		extraSchemas: map[string]string{
+			"blog": testBlogJSON,
+		},
+		reloadFn: func(_ *db.Changes) error {
+			reloadCalls++
+			if reloadCalls == 1 {
+				return stderrors.New("migration failed")
+			}
+			return nil
+		},
+	})
+
+	schemaFile := filepath.Join(testApp.schemaDir, "blog.json")
+	originalSchema := utils.Must(os.ReadFile(schemaFile))
+	newBlogJSON := strings.ReplaceAll(
+		testBlogJSON,
+		`"fields": [`,
+		fmt.Sprintf(`"fields": [%s,`, testBlogJSONFields["description"]),
+	)
+	req := httptest.NewRequest(
+		"PUT",
+		"/schema/blog",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"schema":%s}`, newBlogJSON))),
+	)
+	resp := utils.Must(server.Test(req))
+	defer func() { assert.NoError(t, resp.Body.Close()) }()
+
+	assert.Equal(t, 500, resp.StatusCode)
+	assert.Contains(t, utils.Must(utils.ReadCloserToString(resp.Body)), "migration failed")
+	assert.Equal(t, originalSchema, utils.Must(os.ReadFile(schemaFile)))
+	assert.Nil(t, testApp.Schema("blog").Field("description"))
+	assert.Equal(t, 2, reloadCalls)
+	transactions := utils.Must(filepath.Glob(filepath.Join(filepath.Dir(testApp.schemaDir), ".fastschema-schema-*")))
+	assert.Empty(t, transactions)
 }
 
 func createUpdateTest(t *testing.T) (*testApp, *schemaservice.SchemaService, *restfulresolver.Server) {

@@ -53,22 +53,26 @@ func (d *Adapter) Migrate(
 
 	applyHook := entSchema.WithApplyHook(func(next entSchema.Applier) entSchema.Applier {
 		return entSchema.ApplyFunc(func(ctx context.Context, conn entDialect.ExecQuerier, plan *atlasMigrate.Plan) error {
-			defer func() {
-				if len(plan.Changes) > 0 {
-					if err := atlasMigrate.NewPlanner(nil, migrationDir, []atlasMigrate.PlannerOption{
-						atlasMigrate.WithFormatter(sqltool.GolangMigrateFormatter),
-						atlasMigrate.PlanWithChecksum(false),
-					}...).WritePlan(plan); err != nil {
-						panic(fmt.Errorf("writing migration plan: %w", err))
-					}
-				}
-			}()
-
 			if renameTablesPlan != nil {
 				plan.Changes = append(plan.Changes, renameTablesPlan.Changes...)
 			}
 
-			return next.Apply(ctx, conn, plan)
+			if err := next.Apply(ctx, conn, plan); err != nil {
+				return err
+			}
+
+			if len(plan.Changes) == 0 {
+				return nil
+			}
+
+			if err := atlasMigrate.NewPlanner(nil, migrationDir, []atlasMigrate.PlannerOption{
+				atlasMigrate.WithFormatter(sqltool.GolangMigrateFormatter),
+				atlasMigrate.PlanWithChecksum(false),
+			}...).WritePlan(plan); err != nil {
+				return fmt.Errorf("writing migration plan: %w", err)
+			}
+
+			return nil
 		})
 	})
 

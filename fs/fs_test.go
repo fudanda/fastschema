@@ -13,14 +13,19 @@ func TestDiskConfigClone(t *testing.T) {
 		Driver:          "test",
 		Root:            "test",
 		BaseURL:         "test",
+		PublicPath:      "/files",
 		GetBaseURL:      func() string { return "test" },
 		Provider:        "test",
 		Endpoint:        "test",
 		Region:          "test",
 		Bucket:          "test",
+		CopyCutoff:      1024,
+		ChunkSize:       2048,
+		ForcePathStyle:  true,
 		AccessKeyID:     "test",
 		SecretAccessKey: "test",
 		ACL:             "test",
+		BucketACL:       "private",
 	}
 
 	clone := dc.Clone()
@@ -29,14 +34,19 @@ func TestDiskConfigClone(t *testing.T) {
 	assert.Equal(t, dc.Driver, clone.Driver)
 	assert.Equal(t, dc.Root, clone.Root)
 	assert.Equal(t, dc.BaseURL, clone.BaseURL)
+	assert.Equal(t, dc.PublicPath, clone.PublicPath)
 	assert.Equal(t, dc.GetBaseURL(), clone.GetBaseURL())
 	assert.Equal(t, dc.Provider, clone.Provider)
 	assert.Equal(t, dc.Endpoint, clone.Endpoint)
 	assert.Equal(t, dc.Region, clone.Region)
 	assert.Equal(t, dc.Bucket, clone.Bucket)
+	assert.Equal(t, dc.CopyCutoff, clone.CopyCutoff)
+	assert.Equal(t, dc.ChunkSize, clone.ChunkSize)
+	assert.Equal(t, dc.ForcePathStyle, clone.ForcePathStyle)
 	assert.Equal(t, dc.AccessKeyID, clone.AccessKeyID)
 	assert.Equal(t, dc.SecretAccessKey, clone.SecretAccessKey)
 	assert.Equal(t, dc.ACL, clone.ACL)
+	assert.Equal(t, dc.BucketACL, clone.BucketACL)
 }
 
 func TestStorageConfigCloneNil(t *testing.T) {

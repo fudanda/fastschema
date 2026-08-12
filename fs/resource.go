@@ -19,6 +19,7 @@ type StaticConfig struct {
 	Index         string        `json:"index"`
 	CacheDuration time.Duration `json:"cache_duration"` // Default value 10 * time.Second.
 	MaxAge        int           `json:"max_age"`        // Default value 0
+	NotFoundFile  string        `json:"not_found_file"` // Optional SPA fallback, relative to the static root.
 }
 
 type StaticFs struct {
