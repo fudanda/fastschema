@@ -1,5 +1,13 @@
 import { Link } from '@tanstack/react-router'
-import { Plus } from 'lucide-react'
+import Banner from '@douyinfe/semi-ui/lib/es/banner'
+import Button from '@douyinfe/semi-ui/lib/es/button'
+import Empty from '@douyinfe/semi-ui/lib/es/empty'
+import Spin from '@douyinfe/semi-ui/lib/es/spin'
+import Typography from '@douyinfe/semi-ui/lib/es/typography'
+import { IconPlus } from '@douyinfe/semi-icons'
+import { m } from '../paraglide/messages.js'
+
+const { Title, Text } = Typography
 
 export function PageHeader({
   title,
@@ -13,24 +21,24 @@ export function PageHeader({
   return (
     <header className="page-header">
       <div>
-        <h1>{title}</h1>
-        {description && <p>{description}</p>}
+        <Title heading={1}>{title}</Title>
+        {description && <Text type="tertiary">{description}</Text>}
       </div>
       {action && (
-        <Link className="button button-primary" to={action.to}>
-          <Plus size={16} />
-          {action.label}
+        <Link to={action.to}>
+          <Button theme="solid" type="primary" icon={<IconPlus />}>
+            {action.label}
+          </Button>
         </Link>
       )}
     </header>
   )
 }
 
-export function LoadingState({ label = 'Loading…' }: { label?: string }) {
+export function LoadingState({ label = m.common_loading() }: { label?: string }) {
   return (
     <div className="state-panel" role="status">
-      <span className="spinner" />
-      <p>{label}</p>
+      <Spin tip={label} size="large" />
     </div>
   )
 }
@@ -45,31 +53,27 @@ export function EmptyState({
   icon?: React.ReactNode
 }) {
   return (
-    <div className="empty-state">
-      {icon && <span className="empty-state-icon">{icon}</span>}
-      <strong>{title}</strong>
-      {description && <p>{description}</p>}
-    </div>
+    <Empty
+      className="empty-state"
+      image={icon ? <span className="empty-state-icon">{icon}</span> : undefined}
+      title={title}
+      description={description}
+    />
   )
 }
 
-export function ErrorState({
-  error,
-  retry,
-}: {
-  error: unknown
-  retry?: () => void
-}) {
-  const message = error instanceof Error ? error.message : 'Something went wrong'
+export function ErrorState({ error, retry }: { error: unknown; retry?: () => void }) {
+  const message = error instanceof Error ? error.message : m.error_generic()
   return (
-    <div className="state-panel state-error" role="alert">
-      <strong>Unable to load this page</strong>
-      <p>{message}</p>
-      {retry && (
-        <button type="button" className="button button-outline" onClick={retry}>
-          Try again
-        </button>
-      )}
-    </div>
+    <Banner
+      className="state-panel state-error"
+      type="danger"
+      fullMode={false}
+      title={m.error_page_title()}
+      description={message}
+      closeIcon={null}
+    >
+      {retry && <Button onClick={retry}>{m.error_try_again()}</Button>}
+    </Banner>
   )
 }

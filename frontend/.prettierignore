@@ -1,0 +1,12 @@
+.tanstack
+.playwright-cli
+dist
+node_modules
+output
+project.inlang/.meta.json
+project.inlang/README.md
+project.inlang/cache
+src/paraglide
+src/routeTree.gen.ts
+package-lock.json
+bun.lock

@@ -84,9 +84,7 @@ docker run \
 > Visit the following URL to setup the app: http://localhost:8000/dash/setup/?token=lUDRgoTUUNDsjCcitgGFTqwMZQPmYvlU
 ```
 
-Now you can access to the FastSchema setup page by
-visiting [http://localhost:8000/setup?token=\{token\}](http://localhost:8000?token={token}) (The setup token is
-displayed in the terminal).
+Open the complete `/dash/setup/?token=...` URL printed in the terminal. The setup token is one-time and is never exposed by the health or status APIs.
 
 > **Note:** FastSchema is currently in beta and under active development. We welcome feedback, contributions, and
 > suggestions from the community to help improve the platform and make it more robust and feature-rich.
@@ -108,10 +106,10 @@ The TanStack Start dashboard source lives in [`frontend/`](./frontend). It runs 
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev:stack
 ```
 
-With a FastSchema server running on port `8000`, open <http://localhost:3000/dash/>. Run `npm run build:embed` to rebuild and atomically synchronize the embedded files in `dash/`.
+This starts the API on port `8000` and the dashboard on port `5000`; open <http://localhost:5000/dash/>. Use `npm run dev` when the API is already running. Run `npm run build:embed` to rebuild and atomically synchronize the embedded files in `dash/`.
 
 ## Use Cases
 
@@ -225,7 +223,7 @@ For more information on how to get started with FastSchema, check out our [docum
 - [ ] GraphQL support.
 - [ ] Webhooks.
 - [ ] Client SDKs.
-    - [x] [JavaScript SDK](https://fastschema.com/docs/sdk/javascript-sdk).
+  - [x] [JavaScript SDK](https://fastschema.com/docs/sdk/javascript-sdk).
 
 ## Testing
 
@@ -260,9 +258,8 @@ core functionality. Some of the key dependencies include:
 - [Ent](https://entgo.io/)
 - [Rclone](https://rclone.org/)
 - [Zap](https://pkg.go.dev/go.uber.org/zap)
-- [Next.js](https://nextjs.org/)
-- [Shadcn](https://ui.shadcn.com/)
-- [TipTap](https://www.tiptap.dev/)
+- [TanStack Start](https://tanstack.com/start/latest)
+- [TanStack Query](https://tanstack.com/query/latest)
 
 ## Contributing
 
@@ -279,8 +276,8 @@ Join the conversation and help the community.
 
 - [Discord][discord]
 - [X (formerly Twitter)](https://x.com/fastschema)
-- YouTube: *updating*
-- StackOverflow: *updating*
+- YouTube: _updating_
+- StackOverflow: _updating_
 
 ## License
 

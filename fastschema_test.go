@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path"
@@ -506,10 +507,14 @@ func TestFastschemaResources(t *testing.T) {
 		HideResourcesInfo: true,
 		Dir:               t.TempDir(),
 		DB:                entDB,
+		Logger:            logger.CreateMockLogger(true),
 	}
 	a, err := fastschema.New(config)
 	assert.NoError(t, err)
 	assert.NotNil(t, a)
+	t.Cleanup(func() {
+		assert.NoError(t, a.Shutdown())
+	})
 
 	a.AddMiddlewares(func(c fs.Context) error {
 		restContext, ok := c.(*restfulresolver.Context)
@@ -646,8 +651,21 @@ func TestFastschemaResources(t *testing.T) {
 		Logger:          logger.CreateMockLogger(true),
 	}).Server()
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	// Health and setup status are public and never expose the setup token.
+	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	resp := utils.Must(server.Test(req))
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	healthBody := utils.Must(utils.ReadCloserToString(resp.Body))
+	assert.Contains(t, healthBody, `"status":"ok"`)
+	assert.NotContains(t, healthBody, utils.Must(a.GetSetupToken(context.Background())))
+
+	req = httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	resp = utils.Must(server.Test(req))
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, utils.Must(utils.ReadCloserToString(resp.Body)), `"needs_setup":true`)
+
+	req = httptest.NewRequest("GET", "/test", nil)
+	resp = utils.Must(server.Test(req))
 	defer func() { assert.NoError(t, resp.Body.Close()) }()
 	assert.Equal(t, 200, resp.StatusCode)
 	assert.Contains(t, utils.Must(utils.ReadCloserToString(resp.Body)), `test`)
@@ -692,6 +710,18 @@ func TestFastschemaResources(t *testing.T) {
 	resp = utils.Must(server.Test(req))
 	defer func() { assert.NoError(t, resp.Body.Close()) }()
 	assert.Equal(t, 200, resp.StatusCode)
+	var accessCookie *http.Cookie
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "token" {
+			accessCookie = cookie
+			break
+		}
+	}
+	if assert.NotNil(t, accessCookie) {
+		assert.True(t, accessCookie.HttpOnly)
+		assert.Equal(t, http.SameSiteLaxMode, accessCookie.SameSite)
+		assert.Equal(t, "/", accessCookie.Path)
+	}
 	response := utils.Must(utils.ReadCloserToString(resp.Body))
 	assert.Contains(t, response, `"token":"`)
 	token := strings.Split(response, `"token":"`)[1]
@@ -704,12 +734,41 @@ func TestFastschemaResources(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 	assert.Contains(t, utils.Must(utils.ReadCloserToString(resp.Body)), `"current_page":1`)
 
+	// The dashboard authenticates with the HttpOnly cookie rather than exposing
+	// the token to JavaScript.
+	req = httptest.NewRequest("GET", "/api/content/file", nil)
+	if accessCookie != nil {
+		req.AddCookie(accessCookie)
+	}
+	resp = utils.Must(server.Test(req))
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, utils.Must(utils.ReadCloserToString(resp.Body)), `"current_page":1`)
+
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/logout", bytes.NewReader([]byte(`{}`)))
+	if accessCookie != nil {
+		req.AddCookie(accessCookie)
+	}
+	resp = utils.Must(server.Test(req))
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	clearedAccessCookie := false
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "token" && cookie.MaxAge < 0 {
+			clearedAccessCookie = true
+		}
+	}
+	assert.True(t, clearedAccessCookie)
+
 	// Setup not available
 	req = httptest.NewRequest("POST", "/api/setup", bytes.NewReader([]byte(`{"token":"aaaaa"}`)))
 	resp = utils.Must(server.Test(req))
 	defer func() { assert.NoError(t, resp.Body.Close()) }()
 	assert.Equal(t, 400, resp.StatusCode)
 	assert.Contains(t, utils.Must(utils.ReadCloserToString(resp.Body)), `Setup token is not available`)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	resp = utils.Must(server.Test(req))
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, utils.Must(utils.ReadCloserToString(resp.Body)), `"needs_setup":false`)
 
 	// Test openapi spec
 	req = httptest.NewRequest("GET", "/docs/openapi.json", nil)

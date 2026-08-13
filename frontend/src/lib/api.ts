@@ -1,4 +1,5 @@
 import type { ApiEnvelope } from './types'
+import { m } from '../paraglide/messages.js'
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined
 const API_BASE_URL = (configuredBaseUrl || '/api').replace(/\/$/, '')
@@ -18,6 +19,16 @@ export class ApiError extends Error {
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown
   token?: string | null
+  skipAuthRecovery?: boolean
+  skipUnauthorizedNotification?: boolean
+}
+
+let refreshPromise: Promise<boolean> | null = null
+
+function notifyUnauthorized() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('fastschema:unauthorized'))
+  }
 }
 
 function getMessage(payload: unknown, status: number) {
@@ -26,12 +37,19 @@ function getMessage(payload: unknown, status: number) {
     if (envelope.error?.message) return envelope.error.message
   }
 
-  return `Request failed with status ${status}`
+  return m.api_request_failed({ status })
 }
 
 export async function apiRequest<T>(
   path: string,
-  { body, token, headers, ...init }: RequestOptions = {},
+  {
+    body,
+    token,
+    headers,
+    skipAuthRecovery = false,
+    skipUnauthorizedNotification = false,
+    ...init
+  }: RequestOptions = {},
 ): Promise<T> {
   const requestHeaders = new Headers(headers)
   if (token) requestHeaders.set('Authorization', `Bearer ${token}`)
@@ -44,11 +62,49 @@ export async function apiRequest<T>(
     requestBody = JSON.stringify(body)
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: requestHeaders,
-    body: requestBody,
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      credentials: 'include',
+      ...init,
+      headers: requestHeaders,
+      body: requestBody,
+    })
+  } catch (error) {
+    throw new ApiError(
+      m.api_unreachable({ url: API_BASE_URL }),
+      0,
+      error instanceof Error ? error.name : undefined,
+    )
+  }
+
+  if (response.status === 401) {
+    if (!skipAuthRecovery) {
+      refreshPromise ??= apiRequest('/auth/token/refresh', {
+        method: 'POST',
+        body: {},
+        skipAuthRecovery: true,
+        skipUnauthorizedNotification: true,
+      })
+        .then(() => true)
+        .catch(() => false)
+        .finally(() => {
+          refreshPromise = null
+        })
+
+      if (await refreshPromise) {
+        return apiRequest<T>(path, {
+          ...init,
+          body,
+          token,
+          headers,
+          skipAuthRecovery: true,
+          skipUnauthorizedNotification,
+        })
+      }
+    }
+    if (!skipUnauthorizedNotification) notifyUnauthorized()
+  }
 
   const contentType = response.headers.get('content-type') || ''
   const payload = contentType.includes('application/json')
@@ -60,11 +116,7 @@ export async function apiRequest<T>(
       payload && typeof payload === 'object'
         ? (payload as Partial<ApiEnvelope<unknown>>)
         : undefined
-    throw new ApiError(
-      getMessage(payload, response.status),
-      response.status,
-      envelope?.error?.code,
-    )
+    throw new ApiError(getMessage(payload, response.status), response.status, envelope?.error?.code)
   }
 
   if (payload && typeof payload === 'object' && 'data' in payload) {

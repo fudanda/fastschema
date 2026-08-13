@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"path"
 	"testing"
@@ -120,6 +121,18 @@ func testRefreshTokenViaHTTP(dbc db.Client) func(t *testing.T) {
 		defer resp.Body.Close()
 
 		assert.Equal(t, 200, resp.StatusCode)
+		cookies := map[string]*http.Cookie{}
+		for _, cookie := range resp.Cookies() {
+			cookies[cookie.Name] = cookie
+		}
+		for _, name := range []string{"token", "refresh_token"} {
+			cookie := cookies[name]
+			if assert.NotNil(t, cookie, "%s cookie should be set", name) {
+				assert.True(t, cookie.HttpOnly)
+				assert.Equal(t, http.SameSiteLaxMode, cookie.SameSite)
+				assert.Equal(t, "/", cookie.Path)
+			}
+		}
 
 		// Parse response
 		respBody := utils.Must(utils.ReadCloserToString(resp.Body))
@@ -148,6 +161,15 @@ func testRefreshTokenViaHTTP(dbc db.Client) func(t *testing.T) {
 			First(ctx)
 		require.NoError(t, err, "New session should be stored in DB")
 		assert.Equal(t, app.testUser.ID, newStoredSession.UserID)
+
+		// Browser clients refresh without reading the HttpOnly token.
+		cookieReq := httptest.NewRequest("POST", "/api/auth/token/refresh", bytes.NewReader([]byte(`{}`)))
+		cookieReq.Header.Set("Content-Type", "application/json")
+		cookieReq.AddCookie(&http.Cookie{Name: "refresh_token", Value: newTokenPair.RefreshToken})
+		cookieResp, err := app.server.Test(cookieReq)
+		require.NoError(t, err)
+		defer cookieResp.Body.Close()
+		assert.Equal(t, http.StatusOK, cookieResp.StatusCode)
 	}
 }
 

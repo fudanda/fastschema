@@ -1,8 +1,13 @@
 import { Link } from '@tanstack/react-router'
+import { m } from '../paraglide/messages.js'
 
 export function Brand({ version, compact = false }: { version?: string; compact?: boolean }) {
   return (
-    <Link to="/" className={`brand ${compact ? 'brand-compact' : ''}`} aria-label="FastSchema Dashboard">
+    <Link
+      to="/"
+      className={`brand ${compact ? 'brand-compact' : ''}`}
+      aria-label={m.app_dashboard()}
+    >
       <span className="brand-mark" aria-hidden="true">
         <span>{'{'}</span>
         <svg viewBox="0 0 24 24" role="presentation">

@@ -1,1 +1,0 @@
-import{p as t,j as m}from"./index-Dsg-C4-2.js";import{a as r}from"./schemas-pages-AX47wKtZ.js";import"./data-table-Cp59TQP8.js";import"./page-Bl38Ltg1.js";import"./chevron-right-FVApb38u.js";import"./format-D9rsPZZV.js";import"./box-BWtGqcpO.js";function u(){const{schema:o}=t.useSearch();return m.jsx(r,{schemaName:o},o)}export{u as component};

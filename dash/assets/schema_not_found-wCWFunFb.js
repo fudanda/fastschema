@@ -1,0 +1,1 @@
+import{A as e}from"./index-CJxFfkHl.js";var t=()=>`可选`,n=()=>`Optional`,r=((r={},i={})=>(i.locale??e())===`en`?n(r):t(r)),i=()=>`未找到数据结构`,a=()=>`Schema not found`,o=((t={},n={})=>(n.locale??e())===`en`?a(t):i(t));export{r as n,o as t};

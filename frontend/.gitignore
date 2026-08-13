@@ -5,9 +5,12 @@ dist-ssr
 *.local
 .env
 .nitro
+.playwright-cli/
 .tanstack
 .wrangler
 .output
+output
 .vinxi
+src/paraglide/
 __unconfig*
 todos.json

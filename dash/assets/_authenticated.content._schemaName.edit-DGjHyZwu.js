@@ -1,0 +1,1 @@
+import{F as e}from"./react-vendor-KztAJ7to.js";import{t}from"./content-pages-SMbXQ7K4.js";import{t as n}from"./index-CJxFfkHl.js";var r=e();function i(){let{schemaName:e}=n.useParams(),{id:i}=n.useSearch();return(0,r.jsx)(t,{schemaName:e,id:i})}export{i as component};

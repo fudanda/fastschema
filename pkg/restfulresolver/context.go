@@ -227,14 +227,16 @@ func (c *Context) Cookie(name string, values ...*Cookie) string {
 	if len(values) > 0 {
 		v := values[0]
 		cookie := fiber.Cookie{
-			Name:     name,
-			Value:    v.Value,
-			Path:     v.Path,
-			Domain:   v.Domain,
-			Expires:  v.Expires,
-			Secure:   v.Secure,
-			HTTPOnly: v.HTTPOnly,
-			SameSite: v.SameSite,
+			Name:        name,
+			Value:       v.Value,
+			Path:        v.Path,
+			Domain:      v.Domain,
+			MaxAge:      v.MaxAge,
+			Expires:     v.Expires,
+			Secure:      v.Secure,
+			HTTPOnly:    v.HTTPOnly,
+			SameSite:    v.SameSite,
+			SessionOnly: v.SessionOnly,
 		}
 		c.ctx.Cookie(&cookie)
 		cookieValue = v.Value

@@ -1,1 +1,0 @@
-import{a as o}from"./users-pages-B7rVwPrc.js";import"./index-Dsg-C4-2.js";import"./data-table-Cp59TQP8.js";import"./page-Bl38Ltg1.js";import"./chevron-right-FVApb38u.js";import"./format-D9rsPZZV.js";import"./user-round-YL_rc_7I.js";const a=o;export{a as component};

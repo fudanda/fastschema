@@ -1,0 +1,1 @@
+import{A as e}from"./index-CJxFfkHl.js";var t=()=>`名称`,n=()=>`Name`,r=((r={},i={})=>(i.locale??e())===`en`?n(r):t(r)),i=()=>`系统内置`,a=()=>`System`,o=((t={},n={})=>(n.locale??e())===`en`?a(t):i(t));export{r as n,o as t};

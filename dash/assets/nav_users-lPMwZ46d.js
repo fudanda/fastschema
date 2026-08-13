@@ -1,0 +1,1 @@
+import{A as e}from"./index-CJxFfkHl.js";var t=()=>`用户`,n=()=>`Users`,r=((r={},i={})=>(i.locale??e())===`en`?n(r):t(r));export{r as t};

@@ -1,0 +1,1 @@
+import{A as e}from"./index-CJxFfkHl.js";var t=()=>`邮箱`,n=()=>`Email`,r=((r={},i={})=>(i.locale??e())===`en`?n(r):t(r)),i=()=>`密码`,a=()=>`Password`,o=((t={},n={})=>(n.locale??e())===`en`?a(t):i(t)),s=()=>`请输入有效的邮箱地址`,c=()=>`Enter a valid email address`,l=((t={},n={})=>(n.locale??e())===`en`?c(t):s(t));export{o as n,r,l as t};

@@ -1,0 +1,1 @@
+import{F as e}from"./react-vendor-KztAJ7to.js";import{t}from"./auth-pages-CaWKKgPs.js";import{c as n}from"./index-CJxFfkHl.js";var r=e();function i(){let{redirect:e}=n.useSearch();return(0,r.jsx)(t,{redirect:e})}export{i as component};

@@ -10,13 +10,17 @@ import {
   Trash2,
   UploadCloud,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useRef, useState } from 'react'
 import { EmptyState, ErrorState, LoadingState, PageHeader } from '../components/page'
-import { withQuery } from '../lib/api'
+import { ActionButton, SelectInput, TextInput } from '../components/semi-controls'
 import { useAuth } from '../lib/auth'
+import { confirmDanger } from '../lib/confirm'
 import { formatBytes, formatDate } from '../lib/format'
+import { filesQueryOptions, queryKeys } from '../lib/queries'
 import { useToast } from '../lib/toast'
-import type { MediaFile, Pagination } from '../lib/types'
+import { m } from '../paraglide/messages.js'
+import type { MediaFile } from '../lib/types'
 
 type MediaFilter = 'all' | 'image' | 'video' | 'audio' | 'document'
 
@@ -39,33 +43,17 @@ function MediaIcon({ file, size = 24 }: { file: MediaFile; size?: number }) {
 
 export function FilesPage() {
   const { request } = useAuth()
+  const queryClient = useQueryClient()
+  const filesQuery = useQuery(filesQueryOptions())
   const { notify } = useToast()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [files, setFiles] = useState<Array<MediaFile>>([])
-  const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
-  const [error, setError] = useState<unknown>()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<MediaFilter>('all')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [dragging, setDragging] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(undefined)
-    try {
-      const result = await request<Pagination<MediaFile>>(withQuery('/content/file', { limit: 100 }))
-      setFiles(result.items || [])
-    } catch (nextError) {
-      setError(nextError)
-    } finally {
-      setLoading(false)
-    }
-  }, [request])
-
-  useEffect(() => {
-    void load()
-  }, [load])
+  const files = useMemo(() => filesQuery.data || [], [filesQuery.data])
 
   const visibleFiles = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
@@ -83,15 +71,20 @@ export function FilesPage() {
     items.forEach((file) => form.append('files', file))
     setUploading(true)
     try {
-      const result = await request<{ success: Array<MediaFile>; error: Array<MediaFile> }>('/file/upload', {
-        method: 'POST',
-        body: form,
-      })
-      if (result.error?.length) notify(`${result.error.length} file(s) could not be uploaded`, 'error')
-      if (result.success?.length) notify(`${result.success.length} file(s) uploaded`, 'success')
-      await load()
+      const result = await request<{ success: Array<MediaFile>; error: Array<MediaFile> }>(
+        '/file/upload',
+        {
+          method: 'POST',
+          body: form,
+        },
+      )
+      if (result.error?.length)
+        notify(m.media_upload_errors({ count: result.error.length }), 'error')
+      if (result.success?.length)
+        notify(m.media_upload_success({ count: result.success.length }), 'success')
+      await queryClient.invalidateQueries({ queryKey: queryKeys.files })
     } catch (nextError) {
-      notify(nextError instanceof Error ? nextError.message : 'Upload failed', 'error')
+      notify(nextError instanceof Error ? nextError.message : m.media_upload_failed(), 'error')
     } finally {
       setUploading(false)
       if (inputRef.current) inputRef.current.value = ''
@@ -99,72 +92,142 @@ export function FilesPage() {
   }
 
   const remove = async (file: MediaFile) => {
-    if (!window.confirm(`Delete ${file.name}? This action cannot be undone.`)) return
+    if (!(await confirmDanger(m.media_delete_confirm({ name: file.name })))) return
     try {
       await request('/file', { method: 'DELETE', body: [file.id] })
-      notify('File deleted', 'success')
-      await load()
+      notify(m.media_deleted(), 'success')
+      await queryClient.invalidateQueries({ queryKey: queryKeys.files })
     } catch (nextError) {
-      notify(nextError instanceof Error ? nextError.message : 'Delete failed', 'error')
+      notify(nextError instanceof Error ? nextError.message : m.common_delete_failed(), 'error')
     }
   }
 
   return (
     <div>
-      <PageHeader title="Media Library" description="Manage your media files here." />
+      <PageHeader title={m.media_title()} description={m.media_description()} />
       <section className="media-card">
         <div className="media-toolbar">
           <label className="media-search">
             <Search size={16} />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search for media..." />
+            <TextInput
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={m.media_search()}
+            />
           </label>
-          <div className="media-filter" role="group" aria-label="Filter media by type">
+          <div className="media-filter" role="group" aria-label={m.media_filter_label()}>
             {(['all', 'image', 'video', 'audio', 'document'] as const).map((value) => (
-              <button
+              <ActionButton
                 type="button"
                 key={value}
                 className={filter === value ? 'active' : ''}
                 onClick={() => setFilter(value)}
               >
-                {value === 'all' ? 'All' : value === 'document' ? 'Docs' : `${value.charAt(0).toUpperCase()}${value.slice(1)}s`}
-              </button>
+                {
+                  {
+                    all: m.media_filter_all(),
+                    image: m.media_filter_images(),
+                    video: m.media_filter_videos(),
+                    audio: m.media_filter_audio(),
+                    document: m.media_filter_docs(),
+                  }[value]
+                }
+              </ActionButton>
             ))}
           </div>
           <div className="view-switcher">
-            <button type="button" className={view === 'grid' ? 'active' : ''} onClick={() => setView('grid')} aria-label="Grid view"><Grid2X2 size={16} /></button>
-            <button type="button" className={view === 'list' ? 'active' : ''} onClick={() => setView('list')} aria-label="List view"><List size={16} /></button>
+            <ActionButton
+              type="button"
+              className={view === 'grid' ? 'active' : ''}
+              onClick={() => setView('grid')}
+              aria-label={m.media_grid_view()}
+            >
+              <Grid2X2 size={16} />
+            </ActionButton>
+            <ActionButton
+              type="button"
+              className={view === 'list' ? 'active' : ''}
+              onClick={() => setView('list')}
+              aria-label={m.media_list_view()}
+            >
+              <List size={16} />
+            </ActionButton>
           </div>
-          <select aria-label="Sort media"><option>Newest first</option><option>Oldest first</option><option>Name A–Z</option></select>
+          <SelectInput aria-label={m.media_sort()}>
+            <option>{m.media_sort_newest()}</option>
+            <option>{m.media_sort_oldest()}</option>
+            <option>{m.media_sort_name()}</option>
+          </SelectInput>
         </div>
 
         <div
           className={`upload-zone ${dragging ? 'upload-zone-active' : ''}`}
-          onDragOver={(event) => { event.preventDefault(); setDragging(true) }}
+          onDragOver={(event) => {
+            event.preventDefault()
+            setDragging(true)
+          }}
           onDragLeave={() => setDragging(false)}
-          onDrop={(event) => { event.preventDefault(); setDragging(false); void upload(event.dataTransfer.files) }}
+          onDrop={(event) => {
+            event.preventDefault()
+            setDragging(false)
+            void upload(event.dataTransfer.files)
+          }}
         >
-          <input ref={inputRef} type="file" multiple hidden onChange={(event) => event.target.files && void upload(event.target.files)} />
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            hidden
+            onChange={(event) => event.target.files && void upload(event.target.files)}
+          />
           {uploading ? <span className="spinner" /> : <UploadCloud size={24} />}
-          <div><strong>{uploading ? 'Uploading files…' : 'Drag & drop files here'}</strong><span>or click to browse</span></div>
-          <button type="button" className="button button-outline" onClick={() => inputRef.current?.click()} disabled={uploading}>Browse Files</button>
+          <div>
+            <strong>{uploading ? m.media_uploading() : m.media_drop_files()}</strong>
+            <span>{m.media_browse_hint()}</span>
+          </div>
+          <ActionButton
+            type="button"
+            className="button button-outline"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+          >
+            {m.media_browse()}
+          </ActionButton>
         </div>
 
-        {loading ? (
-          <LoadingState label="Loading media…" />
-        ) : error ? (
-          <ErrorState error={error} retry={() => void load()} />
+        {filesQuery.isPending ? (
+          <LoadingState label={m.media_loading()} />
+        ) : filesQuery.error ? (
+          <ErrorState error={filesQuery.error} retry={() => void filesQuery.refetch()} />
         ) : visibleFiles.length === 0 ? (
-          <EmptyState icon={<FileBoxIcon />} title="No files found" description={files.length ? 'Try changing your search or filter.' : 'Upload a file to get started.'} />
+          <EmptyState
+            icon={<FileBoxIcon />}
+            title={m.media_no_files()}
+            description={files.length ? m.media_no_search_results() : m.media_empty_help()}
+          />
         ) : view === 'grid' ? (
           <div className="media-grid">
             {visibleFiles.map((file) => (
               <article className="media-item" key={file.id}>
                 <div className="media-preview">
-                  {mediaKind(file) === 'image' && file.url ? <img src={file.url} alt="" /> : <MediaIcon file={file} size={30} />}
-                  <button type="button" className="icon-button danger-button" onClick={() => void remove(file)} aria-label={`Delete ${file.name}`}><Trash2 size={15} /></button>
+                  {mediaKind(file) === 'image' && file.url ? (
+                    <img src={file.url} alt="" />
+                  ) : (
+                    <MediaIcon file={file} size={30} />
+                  )}
+                  <ActionButton
+                    type="button"
+                    className="icon-button danger-button"
+                    onClick={() => void remove(file)}
+                    aria-label={m.media_delete_label({ name: file.name })}
+                  >
+                    <Trash2 size={15} />
+                  </ActionButton>
                 </div>
                 <strong title={file.name}>{file.name}</strong>
-                <span>{formatBytes(file.size)} · {formatDate(file.created_at)}</span>
+                <span>
+                  {formatBytes(file.size)} · {formatDate(file.created_at)}
+                </span>
               </article>
             ))}
           </div>
@@ -172,11 +235,23 @@ export function FilesPage() {
           <div className="media-list">
             {visibleFiles.map((file) => (
               <article key={file.id}>
-                <span className="file-type-icon"><MediaIcon file={file} size={19} /></span>
-                <div><strong>{file.name}</strong><small>{file.type || 'Unknown type'}</small></div>
+                <span className="file-type-icon">
+                  <MediaIcon file={file} size={19} />
+                </span>
+                <div>
+                  <strong>{file.name}</strong>
+                  <small>{file.type || m.media_unknown_type()}</small>
+                </div>
                 <span>{formatBytes(file.size)}</span>
                 <span>{formatDate(file.created_at)}</span>
-                <button type="button" className="icon-button danger-button" onClick={() => void remove(file)} aria-label={`Delete ${file.name}`}><Trash2 size={15} /></button>
+                <ActionButton
+                  type="button"
+                  className="icon-button danger-button"
+                  onClick={() => void remove(file)}
+                  aria-label={m.media_delete_label({ name: file.name })}
+                >
+                  <Trash2 size={15} />
+                </ActionButton>
               </article>
             ))}
           </div>

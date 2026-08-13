@@ -15,6 +15,15 @@ type AppConfig struct {
 	Resources []*fs.Resource   `json:"resources"`
 }
 
+type HealthStatus struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+}
+
+type SetupStatus struct {
+	NeedsSetup bool `json:"needs_setup"`
+}
+
 func (a *App) createServices() {
 	a.services = services.New(a)
 	realTimeService := a.services.Realtime()
@@ -52,6 +61,16 @@ func (a *App) createResources() {
 	}
 
 	a.api = a.resources.Group("api", &fs.Meta{Prefix: a.config.APIBaseName})
+	a.api.Add(fs.Get("health", func(_ fs.Context, _ any) (*HealthStatus, error) {
+		return &HealthStatus{Status: "ok", Version: Version}, nil
+	}, &fs.Meta{Public: true}))
+	a.api.Add(fs.Get("setup.status", func(c fs.Context, _ any) (*SetupStatus, error) {
+		needsSetup, err := a.needSetup(c)
+		if err != nil {
+			return nil, err
+		}
+		return &SetupStatus{NeedsSetup: needsSetup}, nil
+	}, &fs.Meta{Get: "/setup/status", Public: true}))
 	a.services.Auth().CreateResource(a.api, a.authProviders)
 	a.services.Schema().CreateResource(a.api)
 	a.services.Content().CreateResource(a.api)

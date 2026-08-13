@@ -1,0 +1,1 @@
+import{t as e}from"./schemas-pages-BYScyaAd.js";var t=e;export{t as component};

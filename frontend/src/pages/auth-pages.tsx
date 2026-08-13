@@ -1,22 +1,30 @@
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowRight, Eye, EyeOff, ShieldCheck } from 'lucide-react'
+import Banner from '@douyinfe/semi-ui/lib/es/banner'
+import Button from '@douyinfe/semi-ui/lib/es/button'
+import Input from '@douyinfe/semi-ui/lib/es/input'
+import Tag from '@douyinfe/semi-ui/lib/es/tag'
+import { IconArrowRight, IconShield } from '@douyinfe/semi-icons'
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import { Brand } from '../components/brand'
+import { LocaleSwitcher } from '../components/locale-switcher'
 import { apiRequest } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { healthQueryOptions, setupStatusQueryOptions } from '../lib/queries'
 import { useToast } from '../lib/toast'
+import { m } from '../paraglide/messages.js'
 
 const loginSchema = z.object({
-  login: z.string().trim().min(1, 'Enter your email or username'),
-  password: z.string().min(1, 'Enter your password'),
+  login: z.string().trim().min(1, m.auth_login_required()),
+  password: z.string().min(1, m.auth_password_required()),
 })
 
 const setupSchema = z.object({
-  token: z.string().trim().min(1, 'The setup token is missing'),
-  username: z.string().trim().min(2, 'Use at least 2 characters'),
-  email: z.string().email('Enter a valid email address'),
-  password: z.string().min(8, 'Use at least 8 characters'),
+  token: z.string().trim().min(1, m.auth_setup_token_missing()),
+  username: z.string().trim().min(2, m.auth_username_min()),
+  email: z.string().email(m.auth_email_invalid()),
+  password: z.string().min(8, m.auth_password_min()),
 })
 
 function PasswordField({
@@ -28,31 +36,23 @@ function PasswordField({
   onChange: (value: string) => void
   autoComplete: string
 }) {
-  const [visible, setVisible] = useState(false)
   return (
-    <div className="password-input">
-      <input
-        id="password"
-        type={visible ? 'text' : 'password'}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="••••••••"
-        autoComplete={autoComplete}
-      />
-      <button
-        type="button"
-        className="icon-button"
-        onClick={() => setVisible((current) => !current)}
-        aria-label={visible ? 'Hide password' : 'Show password'}
-      >
-        {visible ? <EyeOff size={16} /> : <Eye size={16} />}
-      </button>
-    </div>
+    <Input
+      className="password-input"
+      id="password"
+      mode="password"
+      value={value}
+      onChange={onChange}
+      placeholder="••••••••"
+      autoComplete={autoComplete}
+      aria-label={m.common_password()}
+    />
   )
 }
 
 export function LoginPage({ redirect }: { redirect?: string }) {
-  const { login, token } = useAuth()
+  const { login, authenticated } = useAuth()
+  const health = useQuery(healthQueryOptions())
   const navigate = useNavigate()
   const { notify } = useToast()
   const [loginValue, setLoginValue] = useState('')
@@ -61,60 +61,88 @@ export function LoginPage({ redirect }: { redirect?: string }) {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    if (token) {
+    if (authenticated) {
       void navigate({ to: redirect || '/' })
     }
-  }, [navigate, redirect, token])
+  }, [authenticated, navigate, redirect])
 
   return (
     <main className="auth-page">
       <Brand />
+      <LocaleSwitcher className="auth-locale" />
       <section className="auth-card">
         <header>
-          <h1>Welcome back</h1>
-          <p>Log in to your account to continue</p>
+          <h1>{m.auth_welcome_back()}</h1>
+          <p>{m.auth_login_subtitle()}</p>
         </header>
+        <Tag
+          className={`api-status ${health.isSuccess ? 'api-status-online' : 'api-status-offline'}`}
+          color={health.isSuccess ? 'green' : 'red'}
+          size="large"
+        >
+          {health.isSuccess
+            ? m.auth_api_online({ version: health.data.version })
+            : m.auth_api_unavailable()}
+        </Tag>
         <form
           onSubmit={async (event) => {
             event.preventDefault()
             setError('')
             const parsed = loginSchema.safeParse({ login: loginValue, password })
             if (!parsed.success) {
-              setError(parsed.error.issues[0]?.message || 'Check your details')
+              setError(parsed.error.issues[0]?.message || m.common_check_details())
               return
             }
             setSubmitting(true)
             try {
               await login(parsed.data)
-              notify('Login successful', 'success')
+              notify(m.auth_login_success(), 'success')
               await navigate({ to: redirect || '/' })
             } catch (nextError) {
-              setError(nextError instanceof Error ? nextError.message : 'Login failed')
+              setError(nextError instanceof Error ? nextError.message : m.auth_login_failed())
             } finally {
               setSubmitting(false)
             }
           }}
         >
           <label className="field">
-            <span>Email</span>
-            <input
+            <span>{m.auth_email_or_username()}</span>
+            <Input
               type="text"
               value={loginValue}
-              onChange={(event) => setLoginValue(event.target.value)}
-              placeholder="email@domain.ltd"
+              onChange={setLoginValue}
+              placeholder={m.auth_email_placeholder()}
               autoComplete="username"
               autoFocus
             />
           </label>
           <label className="field">
-            <span>Password</span>
-            <PasswordField value={password} onChange={setPassword} autoComplete="current-password" />
+            <span>{m.common_password()}</span>
+            <PasswordField
+              value={password}
+              onChange={setPassword}
+              autoComplete="current-password"
+            />
           </label>
-          {error && <p className="form-error" role="alert">{error}</p>}
-          <button type="submit" className="button button-primary button-block" disabled={submitting}>
-            {submitting ? <span className="spinner spinner-light" /> : null}
-            {submitting ? 'Logging in…' : 'Login'}
-          </button>
+          {error && (
+            <Banner
+              className="form-error"
+              type="danger"
+              fullMode={false}
+              description={error}
+              closeIcon={null}
+            />
+          )}
+          <Button
+            htmlType="submit"
+            theme="solid"
+            type="primary"
+            block
+            loading={submitting}
+            disabled={submitting}
+          >
+            {submitting ? m.auth_logging_in() : m.auth_login()}
+          </Button>
         </form>
       </section>
     </main>
@@ -129,55 +157,106 @@ export function SetupPage({ token }: { token?: string }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const setupStatus = useQuery(setupStatusQueryOptions())
+
+  const missingToken = setupStatus.isSuccess && setupStatus.data.needs_setup && !token
+  const alreadySetup = setupStatus.isSuccess && !setupStatus.data.needs_setup
 
   return (
     <main className="auth-page setup-page">
       <Brand />
+      <LocaleSwitcher className="auth-locale" />
       <section className="auth-card setup-card">
         <header>
-          <span className="setup-icon"><ShieldCheck size={22} /></span>
-          <h1>Set up FastSchema</h1>
-          <p>Create the first administrator account.</p>
+          <span className="setup-icon">
+            <IconShield size="large" />
+          </span>
+          <h1>{m.setup_title()}</h1>
+          <p>{m.setup_subtitle()}</p>
         </header>
+        {missingToken && (
+          <Banner
+            type="warning"
+            fullMode={false}
+            title={m.setup_token_required()}
+            description={m.setup_token_help()}
+            closeIcon={null}
+          />
+        )}
+        {alreadySetup && (
+          <Banner
+            type="info"
+            fullMode={false}
+            title={m.setup_already_configured()}
+            description={m.setup_already_help()}
+            closeIcon={null}
+          />
+        )}
         <form
           onSubmit={async (event) => {
             event.preventDefault()
             setError('')
             const parsed = setupSchema.safeParse({ token, username, email, password })
             if (!parsed.success) {
-              setError(parsed.error.issues[0]?.message || 'Check your details')
+              setError(parsed.error.issues[0]?.message || m.common_check_details())
               return
             }
             setSubmitting(true)
             try {
               await apiRequest<boolean>('/setup', { method: 'POST', body: parsed.data })
-              notify('FastSchema is ready. Log in to continue.', 'success')
+              notify(m.setup_ready(), 'success')
               await navigate({ to: '/login' })
             } catch (nextError) {
-              setError(nextError instanceof Error ? nextError.message : 'Setup failed')
+              setError(nextError instanceof Error ? nextError.message : m.setup_failed())
             } finally {
               setSubmitting(false)
             }
           }}
         >
           <label className="field">
-            <span>Username</span>
-            <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
+            <span>{m.setup_username()}</span>
+            <Input value={username} onChange={setUsername} autoComplete="username" />
           </label>
           <label className="field">
-            <span>Email</span>
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@domain.ltd" autoComplete="email" />
+            <span>{m.common_email()}</span>
+            <Input
+              type="email"
+              value={email}
+              onChange={setEmail}
+              placeholder="admin@domain.ltd"
+              autoComplete="email"
+            />
           </label>
           <label className="field">
-            <span>Password</span>
+            <span>{m.common_password()}</span>
             <PasswordField value={password} onChange={setPassword} autoComplete="new-password" />
-            <small>At least 8 characters</small>
+            <small>{m.setup_password_hint()}</small>
           </label>
-          {error && <p className="form-error" role="alert">{error}</p>}
-          <button type="submit" className="button button-primary button-block" disabled={submitting}>
-            {submitting ? <span className="spinner spinner-light" /> : <ArrowRight size={16} />}
-            {submitting ? 'Creating administrator…' : 'Finish setup'}
-          </button>
+          {error && (
+            <Banner
+              className="form-error"
+              type="danger"
+              fullMode={false}
+              description={error}
+              closeIcon={null}
+            />
+          )}
+          <Button
+            htmlType="submit"
+            theme="solid"
+            type="primary"
+            block
+            icon={!submitting ? <IconArrowRight /> : undefined}
+            loading={submitting}
+            disabled={submitting || missingToken || alreadySetup}
+          >
+            {submitting ? m.setup_creating() : m.setup_finish()}
+          </Button>
+          {alreadySetup && (
+            <Button block onClick={() => navigate({ to: '/login' })}>
+              {m.setup_go_login()}
+            </Button>
+          )}
         </form>
       </section>
     </main>

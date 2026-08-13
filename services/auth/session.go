@@ -1,6 +1,7 @@
 package authservice
 
 import (
+	"strings"
 	"time"
 
 	"github.com/fastschema/fastschema/db"
@@ -11,6 +12,70 @@ import (
 	"github.com/fastschema/fastschema/pkg/jwt"
 	"github.com/google/uuid"
 )
+
+const (
+	accessTokenCookieName  = "token"
+	refreshTokenCookieName = "refresh_token"
+)
+
+type cookieContext interface {
+	Cookie(name string, values ...*fs.Cookie) string
+}
+
+type baseURLContext interface {
+	Base() string
+}
+
+func cookieSecure(c fs.Context) bool {
+	if strings.EqualFold(c.Header("X-Forwarded-Proto"), "https") {
+		return true
+	}
+	baseContext, ok := c.(baseURLContext)
+	return ok && strings.HasPrefix(strings.ToLower(baseContext.Base()), "https://")
+}
+
+func setAuthCookie(c fs.Context, name, value string, expires time.Time) {
+	cookieCtx, ok := c.(cookieContext)
+	if !ok {
+		return
+	}
+	cookieCtx.Cookie(name, &fs.Cookie{
+		Value:    value,
+		Path:     "/",
+		Expires:  expires,
+		Secure:   cookieSecure(c),
+		HTTPOnly: true,
+		SameSite: "Lax",
+	})
+}
+
+func clearAuthCookies(c fs.Context) {
+	cookieCtx, ok := c.(cookieContext)
+	if !ok {
+		return
+	}
+	for _, name := range []string{accessTokenCookieName, refreshTokenCookieName} {
+		cookieCtx.Cookie(name, &fs.Cookie{
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			Expires:  time.Unix(1, 0),
+			Secure:   cookieSecure(c),
+			HTTPOnly: true,
+			SameSite: "Lax",
+		})
+	}
+}
+
+func refreshTokenFromRequest(c fs.Context, req *RefreshTokenRequest) string {
+	if req != nil && req.RefreshToken != "" {
+		return req.RefreshToken
+	}
+	if cookieCtx, ok := c.(cookieContext); ok {
+		return cookieCtx.Cookie(refreshTokenCookieName)
+	}
+	return ""
+}
 
 // RefreshTokenRequest represents the request to refresh a token
 type RefreshTokenRequest struct {
@@ -54,6 +119,7 @@ func (as *AuthService) GenerateJWTTokens(c fs.Context, user *fs.User) (*fs.JWTTo
 
 	// If refresh token is not enabled, return only access token
 	if !as.IsRefreshTokenEnabled() {
+		setAuthCookie(c, accessTokenCookieName, accessToken, accessExpiresAt)
 		return &fs.JWTTokens{
 			AccessToken:          accessToken,
 			AccessTokenExpiresAt: accessExpiresAt,
@@ -97,6 +163,9 @@ func (as *AuthService) GenerateJWTTokens(c fs.Context, user *fs.User) (*fs.JWTTo
 		return nil, err
 	}
 
+	setAuthCookie(c, accessTokenCookieName, accessToken, accessExpiresAt)
+	setAuthCookie(c, refreshTokenCookieName, refreshToken, refreshExpiresAt)
+
 	return &fs.JWTTokens{
 		AccessToken:           accessToken,
 		AccessTokenExpiresAt:  accessExpiresAt,
@@ -107,12 +176,13 @@ func (as *AuthService) GenerateJWTTokens(c fs.Context, user *fs.User) (*fs.JWTTo
 
 // RefreshToken handles the token refresh endpoint
 func (as *AuthService) RefreshToken(c fs.Context, req *RefreshTokenRequest) (*fs.JWTTokens, error) {
-	if req == nil || req.RefreshToken == "" {
+	refreshToken := refreshTokenFromRequest(c, req)
+	if refreshToken == "" {
 		return nil, errors.BadRequest("refresh token is required")
 	}
 
 	// Parse and validate the refresh token
-	claims, err := jwt.ParseRefreshToken(req.RefreshToken, as.AppKey())
+	claims, err := jwt.ParseRefreshToken(refreshToken, as.AppKey())
 	if err != nil {
 		return nil, err
 	}
@@ -183,14 +253,16 @@ func (as *AuthService) RefreshToken(c fs.Context, req *RefreshTokenRequest) (*fs
 
 // Logout invalidates the refresh token
 func (as *AuthService) Logout(c fs.Context, req *RefreshTokenRequest) (bool, error) {
+	defer clearAuthCookies(c)
+	refreshToken := refreshTokenFromRequest(c, req)
 	// If no refresh token provided, just return success
 	// (client-side logout is still valid)
-	if req == nil || req.RefreshToken == "" {
+	if refreshToken == "" {
 		return true, nil
 	}
 
 	// Parse the refresh token to get the session ID
-	claims, err := jwt.ParseRefreshToken(req.RefreshToken, as.AppKey())
+	claims, err := jwt.ParseRefreshToken(refreshToken, as.AppKey())
 	if err != nil {
 		return true, errors.Unauthorized("invalid refresh token")
 	}
@@ -208,6 +280,7 @@ func (as *AuthService) Logout(c fs.Context, req *RefreshTokenRequest) (bool, err
 
 // LogoutAll invalidates all sessions for the current user
 func (as *AuthService) LogoutAll(c fs.Context, _ any) (bool, error) {
+	defer clearAuthCookies(c)
 	user := c.User()
 	if user == nil {
 		return false, errors.Unauthorized("user not authenticated")

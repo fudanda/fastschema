@@ -1,116 +1,104 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { createContext, useCallback, useContext, useEffect, useMemo } from 'react'
 import { apiRequest } from './api'
+import { queryKeys, sessionQueryOptions } from './queries'
+import type { SessionData } from './queries'
 import type { AppConfig, User } from './types'
 
-const TOKEN_KEY = 'fastschema.dashboard.token'
-
 type LoginInput = { login: string; password: string }
-type LoginResult = { token: string; expires?: string }
 type AuthenticatedRequestOptions = Omit<RequestInit, 'body'> & { body?: unknown }
 
 type AuthContextValue = {
   ready: boolean
-  token: string | null
+  authenticated: boolean
   user: User | null
   config: AppConfig | null
+  error: unknown
   login: (input: LoginInput) => Promise<void>
   logout: () => Promise<void>
   refreshConfig: () => Promise<AppConfig>
+  retrySession: () => Promise<void>
   request: <T>(path: string, options?: AuthenticatedRequestOptions) => Promise<T>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = useState(false)
-  const [token, setToken] = useState<string | null>(null)
-  const [user, setUser] = useState<User | null>(null)
-  const [config, setConfig] = useState<AppConfig | null>(null)
-
-  const loadSession = useCallback(async (sessionToken: string) => {
-    const [currentUser, appConfig] = await Promise.all([
-      apiRequest<User>('/auth/me', { token: sessionToken }),
-      apiRequest<AppConfig>('/config', { token: sessionToken }),
-    ])
-    setUser(currentUser)
-    setConfig(appConfig)
-  }, [])
+  const queryClient = useQueryClient()
+  const session = useQuery(sessionQueryOptions())
+  const refetchSession = session.refetch
 
   useEffect(() => {
-    const storedToken = window.localStorage.getItem(TOKEN_KEY)
-    if (!storedToken) {
-      setReady(true)
-      return
+    const clearSession = () => {
+      queryClient.setQueryData<SessionData | null>(queryKeys.session, null)
     }
-
-    setToken(storedToken)
-    loadSession(storedToken)
-      .catch(() => {
-        window.localStorage.removeItem(TOKEN_KEY)
-        setToken(null)
-        setUser(null)
-        setConfig(null)
-      })
-      .finally(() => setReady(true))
-  }, [loadSession])
+    window.addEventListener('fastschema:unauthorized', clearSession)
+    return () => window.removeEventListener('fastschema:unauthorized', clearSession)
+  }, [queryClient])
 
   const login = useCallback(
     async (input: LoginInput) => {
-      const result = await apiRequest<LoginResult>('/auth/local/login', {
+      await apiRequest('/auth/local/login', {
         method: 'POST',
         body: input,
+        skipAuthRecovery: true,
+        skipUnauthorizedNotification: true,
       })
-      window.localStorage.setItem(TOKEN_KEY, result.token)
-      setToken(result.token)
-      await loadSession(result.token)
+      await queryClient.fetchQuery({ ...sessionQueryOptions(), staleTime: 0 })
     },
-    [loadSession],
+    [queryClient],
   )
 
   const logout = useCallback(async () => {
-    if (token) {
-      await apiRequest('/auth/logout', { method: 'POST', token }).catch(() => undefined)
-    }
-    window.localStorage.removeItem(TOKEN_KEY)
-    setToken(null)
-    setUser(null)
-    setConfig(null)
-  }, [token])
+    await apiRequest('/auth/logout', {
+      method: 'POST',
+      body: {},
+      skipAuthRecovery: true,
+    }).catch(() => undefined)
+    queryClient.clear()
+  }, [queryClient])
 
   const refreshConfig = useCallback(async () => {
-    if (!token) throw new Error('Authentication required')
-    const nextConfig = await apiRequest<AppConfig>('/config', { token })
-    setConfig(nextConfig)
-    return nextConfig
-  }, [token])
+    const config = await apiRequest<AppConfig>('/config')
+    queryClient.setQueryData(queryKeys.session, (current: SessionData | undefined) =>
+      current ? { ...current, config } : current,
+    )
+    return config
+  }, [queryClient])
+
+  const retrySession = useCallback(async () => {
+    await refetchSession()
+  }, [refetchSession])
 
   const request = useCallback(
-    async <T,>(path: string, options: AuthenticatedRequestOptions = {}) => {
-      if (!token) throw new Error('Authentication required')
-      return apiRequest<T>(path, { ...options, token })
-    },
-    [token],
+    async <T,>(path: string, options: AuthenticatedRequestOptions = {}) =>
+      apiRequest<T>(path, options),
+    [],
   )
 
-  const value = useMemo(
+  const value = useMemo<AuthContextValue>(
     () => ({
-      ready,
-      token,
-      user,
-      config,
+      ready: !session.isPending,
+      authenticated: Boolean(session.data),
+      user: session.data?.user || null,
+      config: session.data?.config || null,
+      error: session.error,
       login,
       logout,
       refreshConfig,
+      retrySession,
       request,
     }),
-    [ready, token, user, config, login, logout, refreshConfig, request],
+    [
+      session.isPending,
+      session.data,
+      session.error,
+      login,
+      logout,
+      refreshConfig,
+      retrySession,
+      request,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

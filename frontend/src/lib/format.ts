@@ -1,14 +1,15 @@
+import { m } from '../paraglide/messages.js'
+import { getLocale } from '../paraglide/runtime.js'
+
 export function titleCase(value: string) {
-  return value
-    .replace(/[-_]+/g, ' ')
-    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+  return value.replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 export function formatDate(value: unknown) {
   if (!value) return '—'
   const date = new Date(String(value))
   if (Number.isNaN(date.getTime())) return String(value)
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(getLocale(), {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date)
@@ -23,7 +24,7 @@ export function formatBytes(value?: number) {
 
 export function displayValue(value: unknown) {
   if (value === null || value === undefined || value === '') return '—'
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (typeof value === 'boolean') return value ? m.common_yes() : m.common_no()
   if (Array.isArray(value)) return `${value.length}`
   if (typeof value === 'object') {
     const record = value as Record<string, unknown>
@@ -33,7 +34,7 @@ export function displayValue(value: unknown) {
 }
 
 export function initials(name?: string, email?: string) {
-  const source = name || email || 'User'
+  const source = name || email || m.common_user()
   return source
     .split(/[\s@._-]+/)
     .slice(0, 2)

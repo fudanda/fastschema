@@ -1,1 +1,0 @@
-import{R as t,j as r}from"./index-Dsg-C4-2.js";import{L as e}from"./auth-pages-B8he8bru.js";import"./brand-CUdzlC7b.js";import"./shield-check-C2klJOWN.js";function p(){const{redirect:o}=t.useSearch();return r.jsx(e,{redirect:o})}export{p as component};

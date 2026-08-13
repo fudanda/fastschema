@@ -1,185 +1,123 @@
+import Button from '@douyinfe/semi-ui/lib/es/button'
+import Empty from '@douyinfe/semi-ui/lib/es/empty'
+import Input from '@douyinfe/semi-ui/lib/es/input'
+import Table from '@douyinfe/semi-ui/lib/es/table'
+import { IconFilter, IconPlus, IconSearch } from '@douyinfe/semi-icons'
 import { Link } from '@tanstack/react-router'
-import {
-  type ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from '@tanstack/react-table'
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  ChevronFirst,
-  ChevronLast,
-  ChevronLeft,
-  ChevronRight,
-  Columns3,
-  Filter,
-  Plus,
-  Search,
-} from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
+import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table/interface'
+import { m } from '../paraglide/messages.js'
 
-export function DataTable<T>({
+export type DataColumn<T> = {
+  key?: string
+  dataIndex?: keyof T & string
+  title: ReactNode
+  render?: (value: unknown, record: T, index: number) => ReactNode
+  sorter?: (left: T, right: T) => number
+  width?: number | string
+  fixed?: 'left' | 'right'
+}
+
+function searchableValue(value: unknown): string {
+  if (value == null) return ''
+  if (Array.isArray(value)) return value.map(searchableValue).join(' ')
+  if (typeof value === 'object') return Object.values(value).map(searchableValue).join(' ')
+  return String(value)
+}
+
+export function DataTable<T extends object>({
   data,
   columns,
   createTo,
-  createLabel = 'Create',
-  emptyLabel = 'No results.',
-  searchPlaceholder = 'Search records…',
+  createLabel = m.common_create(),
+  emptyLabel = m.common_no_results(),
+  searchPlaceholder = m.common_search_records(),
+  getRowKey,
 }: {
   data: Array<T>
-  columns: Array<ColumnDef<T>>
+  columns: Array<DataColumn<T>>
   createTo?: string
   createLabel?: string
   emptyLabel?: string
   searchPlaceholder?: string
+  getRowKey?: (record: T, index: number) => string
 }) {
   const [filterOpen, setFilterOpen] = useState(false)
   const [globalFilter, setGlobalFilter] = useState('')
-  const [rowSelection, setRowSelection] = useState({})
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Array<string | number>>([])
 
-  const table = useReactTable({
-    data,
-    columns,
-    state: { globalFilter, rowSelection },
-    onGlobalFilterChange: setGlobalFilter,
-    onRowSelectionChange: setRowSelection,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 10 } },
-  })
+  const filteredData = useMemo(() => {
+    const query = globalFilter.trim().toLocaleLowerCase()
+    if (!query) return data
+    return data.filter((record) => searchableValue(record).toLocaleLowerCase().includes(query))
+  }, [data, globalFilter])
 
   return (
-    <section className="table-card">
+    <section className="table-card semi-table-card">
       <div className="table-toolbar">
         <div className="toolbar-actions">
-          <button
-            type="button"
-            className={`button button-outline ${filterOpen ? 'button-active' : ''}`}
+          <Button
+            theme={filterOpen ? 'solid' : 'light'}
+            type={filterOpen ? 'primary' : 'tertiary'}
+            icon={<IconFilter />}
             onClick={() => setFilterOpen((value) => !value)}
           >
-            <Filter size={15} />
-            Filter
-          </button>
+            {m.datatable_filter()}
+          </Button>
           {createTo && (
-            <Link to={createTo} className="button button-primary">
-              <Plus size={15} />
-              {createLabel}
+            <Link to={createTo}>
+              <Button theme="solid" type="primary" icon={<IconPlus />}>
+                {createLabel}
+              </Button>
             </Link>
           )}
         </div>
-        <button type="button" className="icon-button" aria-label="Choose visible columns">
-          <Columns3 size={17} />
-        </button>
+        <span className="table-selection-summary">
+          {m.datatable_selected_rows({
+            selected: selectedRowKeys.length,
+            total: filteredData.length,
+          })}
+        </span>
       </div>
 
       {filterOpen && (
         <div className="table-filterbar">
-          <Search size={16} />
-          <input
-            type="search"
+          <Input
+            prefix={<IconSearch />}
             value={globalFilter}
-            onChange={(event) => setGlobalFilter(event.target.value)}
+            onChange={setGlobalFilter}
             placeholder={searchPlaceholder}
+            showClear
             autoFocus
           />
         </div>
       )}
 
-      <div className="table-scroll">
-        <table>
-          <thead>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => {
-                  const sorted = header.column.getIsSorted()
-                  return (
-                    <th key={header.id}>
-                      {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                        <button type="button" onClick={header.column.getToggleSortingHandler()}>
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          {sorted === 'asc' ? (
-                            <ArrowUp size={14} />
-                          ) : sorted === 'desc' ? (
-                            <ArrowDown size={14} />
-                          ) : (
-                            <ArrowUpDown size={14} />
-                          )}
-                        </button>
-                      ) : (
-                        flexRender(header.column.columnDef.header, header.getContext())
-                      )}
-                    </th>
-                  )
-                })}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id} data-selected={row.getIsSelected() || undefined}>
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td className="table-empty" colSpan={columns.length}>
-                  {emptyLabel}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <footer className="table-footer">
-        <span>
-          {Object.keys(rowSelection).length} of {table.getFilteredRowModel().rows.length} row(s) selected
-        </span>
-        <div className="pagination">
-          <label>
-            Rows per page
-            <select
-              value={table.getState().pagination.pageSize}
-              onChange={(event) => table.setPageSize(Number(event.target.value))}
-            >
-              {[10, 20, 50].map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span>
-            Page {table.getState().pagination.pageIndex + 1} of {Math.max(table.getPageCount(), 1)}
-          </span>
-          <div className="pagination-buttons">
-            <button type="button" onClick={() => table.firstPage()} disabled={!table.getCanPreviousPage()} aria-label="Go to first page">
-              <ChevronFirst size={16} />
-            </button>
-            <button type="button" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} aria-label="Go to previous page">
-              <ChevronLeft size={16} />
-            </button>
-            <button type="button" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} aria-label="Go to next page">
-              <ChevronRight size={16} />
-            </button>
-            <button type="button" onClick={() => table.lastPage()} disabled={!table.getCanNextPage()} aria-label="Go to last page">
-              <ChevronLast size={16} />
-            </button>
-          </div>
-        </div>
-      </footer>
+      <Table<Record<string, unknown>>
+        className="data-table"
+        columns={columns as unknown as Array<ColumnProps<Record<string, unknown>>>}
+        dataSource={filteredData as Array<Record<string, unknown>>}
+        rowKey={(record) => {
+          const typedRecord = record as T
+          const candidate = record as Record<string, unknown>
+          const index = filteredData.indexOf(typedRecord)
+          return getRowKey?.(typedRecord, index) ?? String(candidate.id ?? candidate.name ?? index)
+        }}
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys ?? []),
+        }}
+        pagination={{
+          pageSize: 10,
+          pageSizeOpts: [10, 20, 50],
+          showSizeChanger: true,
+          showQuickJumper: filteredData.length > 50,
+        }}
+        empty={<Empty description={emptyLabel} />}
+        scroll={{ x: 'max-content' }}
+        size="middle"
+      />
     </section>
   )
 }

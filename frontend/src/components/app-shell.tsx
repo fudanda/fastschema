@@ -1,4 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
+import Avatar from '@douyinfe/semi-ui/lib/es/avatar'
 import {
   Box,
   ChevronDown,
@@ -16,7 +17,10 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../lib/auth'
 import { initials, titleCase } from '../lib/format'
+import { m } from '../paraglide/messages.js'
 import { Brand } from './brand'
+import { LocaleSwitcher } from './locale-switcher'
+import { ActionButton } from './semi-controls'
 
 const excludedContentSchemas = new Set(['file', 'permission', 'role', 'user'])
 
@@ -47,24 +51,33 @@ function NavLink({
 
 function Breadcrumbs() {
   const { pathname, search } = useLocation()
-  const parts = pathname.replace(/^\/dash\/?/, '').split('/').filter(Boolean)
-  const items = [{ label: 'Dashboard', to: '/' }]
+  const parts = pathname
+    .replace(/^\/dash\/?/, '')
+    .split('/')
+    .filter(Boolean)
+  const items: Array<{ label: string; to: string }> = [{ label: m.nav_dashboard(), to: '/' }]
+  const sectionLabels: Record<string, string> = {
+    content: m.nav_content(),
+    files: m.nav_files(),
+    schemas: m.nav_schemas(),
+    users: m.nav_users(),
+    roles: m.nav_roles(),
+  }
 
   if (parts.length) {
     let to = ''
-    parts.forEach((part, index) => {
+    parts.forEach((part) => {
       to += `/${part}`
-      let label = titleCase(part)
-      if (part === 'content' && parts[index + 1]) label = 'Content'
+      let label = sectionLabels[part] || titleCase(part)
       if (part === 'edit' && typeof search === 'object' && search && 'schema' in search) {
-        label = `Edit ${titleCase(String(search.schema))}`
+        label = m.breadcrumb_edit_item({ item: titleCase(String(search.schema)) })
       }
       items.push({ label, to })
     })
   }
 
   return (
-    <nav className="breadcrumbs" aria-label="Breadcrumb">
+    <nav className="breadcrumbs" aria-label={m.breadcrumb_label()}>
       {items.map((item, index) => (
         <span key={`${item.to}-${item.label}`}>
           {index > 0 && <span className="breadcrumb-divider">/</span>}
@@ -92,10 +105,7 @@ export function AppShell() {
   const contentSchemas = useMemo(
     () =>
       (config?.schemas || [])
-        .filter(
-          (schema) =>
-            !schema.is_junction_schema && !excludedContentSchemas.has(schema.name),
-        )
+        .filter((schema) => !schema.is_junction_schema && !excludedContentSchemas.has(schema.name))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [config],
   )
@@ -113,46 +123,50 @@ export function AppShell() {
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       {sidebarOpen && (
-        <button
+        <ActionButton
           type="button"
           className="sidebar-backdrop"
-          aria-label="Close sidebar"
+          aria-label={m.nav_close_sidebar()}
           onClick={closeMobileSidebar}
         />
       )}
       <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
         <div className="sidebar-brand-row">
           <Brand version={config?.version || '0.0.0'} compact={sidebarCollapsed} />
-          <button
+          <ActionButton
             type="button"
             className="icon-button sidebar-mobile-close"
-            aria-label="Close sidebar"
+            aria-label={m.nav_close_sidebar()}
             onClick={closeMobileSidebar}
           >
             <X size={18} />
-          </button>
+          </ActionButton>
         </div>
 
         <div className="sidebar-scroll">
           <section className="nav-section">
-            <p className="nav-label">Management</p>
+            <p className="nav-label">{m.nav_management()}</p>
             <nav>
               <NavLink
                 to="/"
-                label="Dashboard"
+                label={m.nav_dashboard()}
                 icon={<CircleGauge size={17} />}
                 onNavigate={closeMobileSidebar}
               />
-              <button
+              <ActionButton
                 type="button"
                 className={`nav-link nav-button ${location.pathname.includes('/content/') ? 'nav-link-active' : ''}`}
                 onClick={() => setContentOpen((value) => !value)}
                 aria-expanded={contentOpen}
               >
                 <Database size={17} />
-                <span>Content</span>
-                {contentOpen ? <ChevronDown className="nav-chevron" size={15} /> : <ChevronRight className="nav-chevron" size={15} />}
-              </button>
+                <span>{m.nav_content()}</span>
+                {contentOpen ? (
+                  <ChevronDown className="nav-chevron" size={15} />
+                ) : (
+                  <ChevronRight className="nav-chevron" size={15} />
+                )}
+              </ActionButton>
               {contentOpen && !sidebarCollapsed && (
                 <div className="nav-submenu">
                   {contentSchemas.map((schema) => (
@@ -171,7 +185,7 @@ export function AppShell() {
               )}
               <NavLink
                 to="/files"
-                label="Files"
+                label={m.nav_files()}
                 icon={<FileBox size={17} />}
                 onNavigate={closeMobileSidebar}
               />
@@ -179,23 +193,23 @@ export function AppShell() {
           </section>
 
           <section className="nav-section">
-            <p className="nav-label">Settings</p>
+            <p className="nav-label">{m.nav_settings()}</p>
             <nav>
               <NavLink
                 to="/schemas"
-                label="Schemas"
+                label={m.nav_schemas()}
                 icon={<Box size={17} />}
                 onNavigate={closeMobileSidebar}
               />
               <NavLink
                 to="/users"
-                label="Users"
+                label={m.nav_users()}
                 icon={<UserRound size={17} />}
                 onNavigate={closeMobileSidebar}
               />
               <NavLink
                 to="/roles"
-                label="Roles & Permissions"
+                label={m.nav_roles()}
                 icon={<ShieldCheck size={17} />}
                 onNavigate={closeMobileSidebar}
               />
@@ -206,16 +220,16 @@ export function AppShell() {
         <div className="sidebar-footer">
           <a className="nav-link" href="https://fastschema.com" target="_blank" rel="noreferrer">
             <FileBox size={17} />
-            <span>Documentation</span>
+            <span>{m.nav_documentation()}</span>
           </a>
           <div className="user-menu-wrap" ref={menuRef}>
             {userMenuOpen && (
               <div className="user-popover">
                 <div className="user-popover-meta">
-                  <strong>{user?.username || 'User'}</strong>
+                  <strong>{user?.username || m.common_user()}</strong>
                   <span>{user?.email}</span>
                 </div>
-                <button
+                <ActionButton
                   type="button"
                   onClick={async () => {
                     await logout()
@@ -223,48 +237,51 @@ export function AppShell() {
                   }}
                 >
                   <LogOut size={16} />
-                  Log out
-                </button>
+                  {m.nav_logout()}
+                </ActionButton>
               </div>
             )}
-            <button
+            <ActionButton
               type="button"
               className="user-button"
               onClick={() => setUserMenuOpen((value) => !value)}
               aria-expanded={userMenuOpen}
             >
-              <span className="avatar">{initials(user?.username, user?.email)}</span>
+              <Avatar className="avatar" size="small" color="orange">
+                {initials(user?.username, user?.email)}
+              </Avatar>
               {!sidebarCollapsed && (
                 <span className="user-copy">
-                  <strong>{user?.username || 'User'}</strong>
+                  <strong>{user?.username || m.common_user()}</strong>
                   <small>{user?.email}</small>
                 </span>
               )}
               {!sidebarCollapsed && <ChevronDown size={15} />}
-            </button>
+            </ActionButton>
           </div>
         </div>
       </aside>
 
       <main className="main-panel">
         <header className="topbar">
-          <button
+          <ActionButton
             type="button"
             className="icon-button mobile-menu"
-            aria-label="Open sidebar"
+            aria-label={m.nav_open_sidebar()}
             onClick={() => setSidebarOpen(true)}
           >
             <Menu size={19} />
-          </button>
-          <button
+          </ActionButton>
+          <ActionButton
             type="button"
             className="icon-button desktop-collapse"
-            aria-label="Toggle sidebar"
+            aria-label={m.nav_toggle_sidebar()}
             onClick={() => setSidebarCollapsed((value) => !value)}
           >
             <PanelLeftClose size={18} />
-          </button>
+          </ActionButton>
           <Breadcrumbs />
+          <LocaleSwitcher className="topbar-locale" />
         </header>
         <div className="page-content">
           <Outlet />

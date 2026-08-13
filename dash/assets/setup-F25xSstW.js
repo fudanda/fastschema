@@ -1,0 +1,1 @@
+import{F as e}from"./react-vendor-KztAJ7to.js";import{n as t}from"./auth-pages-CaWKKgPs.js";import{s as n}from"./index-CJxFfkHl.js";var r=e();function i(){let{token:e}=n.useSearch();return(0,r.jsx)(t,{token:e})}export{i as component};

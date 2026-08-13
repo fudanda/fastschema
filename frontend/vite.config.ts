@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
+import { paraglideVitePlugin } from '@inlang/paraglide-js'
 
 import viteReact from '@vitejs/plugin-react'
 
@@ -21,6 +22,25 @@ const config = defineConfig({
   preview: {
     host: '127.0.0.1',
   },
+  ssr: {
+    // Semi's ESM build uses extensionless internal imports. Bundling it for the
+    // server keeps TanStack Start prerendering on Node ESM-compatible output.
+    noExternal: [/^@douyinfe\/semi-/, /^date-fns(?:-tz)?/],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('@douyinfe')) return 'semi-vendor'
+          if (id.includes('@tanstack')) return 'tanstack-vendor'
+          if (id.includes('react')) return 'react-vendor'
+          if (id.includes('lucide-react')) return 'icons-vendor'
+          return undefined
+        },
+      },
+    },
+  },
   plugins: [
     tanstackStart({
       router: {
@@ -38,6 +58,14 @@ const config = defineConfig({
       },
     }),
     viteReact(),
+    paraglideVitePlugin({
+      project: './project.inlang',
+      outdir: './src/paraglide',
+      outputStructure: 'message-modules',
+      emitTsDeclarations: true,
+      cookieName: 'FASTSCHEMA_LOCALE',
+      strategy: ['cookie', 'preferredLanguage', 'baseLocale'],
+    }),
   ],
 })
 

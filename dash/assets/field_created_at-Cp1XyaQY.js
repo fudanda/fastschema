@@ -1,0 +1,1 @@
+import{A as e}from"./index-CJxFfkHl.js";var t=()=>`ID`,n=()=>`Id`,r=((r={},i={})=>(i.locale??e())===`en`?n(r):t(r)),i=()=>`创建时间`,a=()=>`Created At`,o=((t={},n={})=>(n.locale??e())===`en`?a(t):i(t));export{r as n,o as t};
